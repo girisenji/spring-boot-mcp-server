@@ -62,12 +62,8 @@ gpg --list-secret-keys --keyid-format=long
 # Export private key (for GitHub secrets)
 gpg --armor --export-secret-keys YOUR_KEY_ID > private-key.asc
 
-# Export public key
-gpg --armor --export YOUR_KEY_ID > public-key.asc
-
-# Publish public key to key servers
-gpg --keyserver keyserver.ubuntu.com --send-keys YOUR_KEY_ID
-gpg --keyserver keys.openpgp.org --send-keys YOUR_KEY_ID
+# Note: Publishing to keyservers is NOT required for Central Portal
+# The new system only validates that artifacts are signed, not where keys are published
 ```
 
 ### 3. GitHub Repository Secrets
