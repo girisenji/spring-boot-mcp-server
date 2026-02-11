@@ -1,31 +1,21 @@
-# Auto MCP Server for Spring Boot 3
+# Spring Boot MCP Server
 
-[![Maven Central](https://img.shields.io/maven-central/v/com.girisenji.ai/spring-boot-mcp-server)](https://central.sonatype.com/artifact/com.girisenji.ai/spring-boot-mcp-server)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-green)](https://spring.io/projects/spring-boot)
 
-A Spring Boot 3 starter library that automatically transforms any JDK 21+ microservice into an **MCP (Model Context Protocol) server**, enabling AI agents to interact with your REST and GraphQL APIs as tools.
+A Spring Boot starter library that enables your application to serve as an **MCP (Model Context Protocol) server**, allowing AI agents like Claude to interact with your custom tools.
 
 ## 🚀 Features
 
-### Automatic API Discovery
-- **OpenAPI/Swagger Detection**: Automatically discovers and parses OpenAPI 3.x specifications
-- **REST Endpoint Scanning**: Falls back to scanning `@RestController` and `@RequestMapping` annotations
-- **GraphQL Support**: Detects and exposes GraphQL schemas and queries as MCP tools
-- **Smart Introspection**: Uses Spring's application context for comprehensive endpoint discovery
-
-### MCP Server Capabilities
+- **Auto-Configuration**: Add dependency and get MCP server out-of-the-box
 - **SSE Transport**: Implements MCP protocol over Server-Sent Events
-- **Tool Registry**: Converts each API endpoint into an MCP tool with proper JSON Schema
-- **Dynamic Discovery**: Real-time tool discovery and updates
-- **Standard Compliance**: Follows the official Model Context Protocol specification
-
-### Zero Configuration
-- **Auto-Configuration**: Works out-of-the-box with Spring Boot starter
-- **Smart Defaults**: Sensible defaults with full customization options
-- **Security Aware**: Respects existing Spring Security configurations
-- **Flexible Filtering**: Include/exclude endpoints via Ant-style patterns
+- **Config-Driven Security**: Tool approval via version-controlled YAML files
+- **Custom Tools**: Simple interface for creating tools
+- **Tool Discovery**: Automatic discovery of Spring beans implementing `McpTool`
+- **Admin UI**: Web interface for tool management and discovery
+- **Runtime Reload**: Reload approved tools without restart
+- **Zero Dependencies**: No external tools or agents required
 
 ## 📦 Installation
 
@@ -45,81 +35,86 @@ implementation 'com.girisenji.ai:spring-boot-mcp-server:1.0.0'
 
 ## 🎯 Quick Start
 
-### 1. Add the Dependency
+### 1. Add Dependency
 
-Simply add the starter to your existing Spring Boot 3 application.
+Add to your Spring Boot 3.2+ application:
 
-### 2. That's It!
+```xml
+<dependency>
+    <groupId>com.girisenji.ai</groupId>
+    <artifactId>spring-boot-mcp-server</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
 
-The library automatically:
-1. Scans your application for REST/GraphQL endpoints
-2. Generates MCP tool definitions with JSON schemas
-3. Exposes the `/mcp` endpoint for AI agent connections
+### 2. Create a Tool
 
-### 3. Connect an AI Agent
+Implement the `McpTool` interface:
+
+```java
+@Component
+public class GreetingTool implements McpTool {
+    
+    @Override
+    public String getName() {
+        return "greet";
+    }
+    
+    @Override
+    public String getDescription() {
+        return "Generate a greeting message";
+    }
+    
+    Application Properties (Optional)
+
+```yaml
+mcp:
+  server:
+    enabled: true  # Enable/disable MCP server (default: true)
+    
+    # Server metadata
+    server-info:
+      name: "My MCP Server"
+      version: "1.0.0"
+      description: "Custom MCP server"
+    
+    # Tool approval configuration
+    tool-approval:
+      approved-tools-config: "classpath:approved-tools.yml"
+```
+
+### Tool Approval (Required)
+
+**All tools must be explicitly approved** via YAML configuration. Create `src/main/resources/approved-tools.yml`:
+
+```yaml
+approvedTools:
+  - tool_name_1
+  - tool_name_2
+  - greet
+```
+
+**Security Model:**
+- ✅ **Config-Driven Only**: Tools approved via version-controlled YAML
+- ✅ **Deny by Default**: No tools approved unless explicitly listed
+- ✅ **Audit Trail**: Changes tracked in Git history
+- ✅ **Runtime Reload**: Update configuration and reload without restart
+
+**External Configuration:**
+
+For production, use external config files:
+
+```yaml
+mcp:
+  server:
+    tool-approval:
+      approved-tools-config: "file:/etc/mcp/approved-tools.yml"
+```
 
 ```bash
-# Health check
-curl http://localhost:8080/mcp/health
-
-# List available tools
-curl -X POST http://localhost:8080/mcp/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": "1",
-    "method": "tools/list",
-    "params": {}
-  }'
-```
-
-## ⚙️ Configuration
-
-### Basic Configuration
-
-```yaml
-auto-mcp-server:
-  enabled: true              # Enable/disable the MCP server
-  endpoint: /mcp            # MCP endpoint path
-  eager-init: true          # Initialize tool registry on startup
-```
-
-### Tool Approval (Security & Governance)
-
-> **📘 Important**: This is a Spring Boot **starter library**. Configuration including `approved-tools.yml` goes in **your application**, NOT in the library JAR itself.
-
-Control which APIs are exposed to AI agents:
-
-```yaml
-auto-mcp-server:
-  tools:
-    approval-mode: config-based   # ✅ RECOMMENDED FOR PRODUCTION
-    
-    # Path to approved tools config file in YOUR application
-    approval-config-file: classpath:approved-tools.yml
-    
-    # Optional: Auto-approve patterns (for manual mode during development)
-    auto-approve-patterns:
-      - "get_api_public_*"
-      - "query_*"
-```
-
-**Approval Modes:**
-- **✅ `config-based`** - Only tools in config file are approved _(RECOMMENDED FOR PRODUCTION - persistent, versioned in Git)_
-- **⚠️ `manual`** - Tools require explicit approval via management API _(DEVELOPMENT ONLY - approvals lost on restart)_
-- **⚠️ `auto`** - All discovered tools are automatically approved _(DEVELOPMENT ONLY - security risk)_
-
-**Where to put `approved-tools.yml`?**
-- ✅ In **your application's** `src/main/resources/approved-tools.yml`
-- ❌ NOT in the library JAR
-
-> **⚠️ Critical**: `manual` mode stores approvals **in-memory only**. All approvals are **LOST on restart**. Use `config-based` mode with `approved-tools.yml` for production (approvals persisted, versioned in Git).
-
-### Discovery Configuration
-
-```yaml
-auto-mcp-server:
-  discovery:
+# Environment variable
+export MCP_SERVER_TOOL_APPROVAL_APPROVED_TOOLS_CONFIG=file:/config/approved-tools.yml
+java -jar app.jar
     openapi-enabled: true   # Discover from OpenAPI specs
     rest-enabled: true      # Discover REST endpoints
     graphql-enabled: true   # Discover GraphQL endpoints
@@ -217,81 +212,42 @@ POST /mcp/admin/tools/approve-pattern
 POST /mcp/admin/tools/refresh
 ```
 
-### Approval Workflow Example
+### �️ Tool Management
+
+### Admin UI
+
+Access the web-based admin interface:
 
 ```bash
-# 1. Check what tools were discovered
-curl http://localhost:8080/mcp/admin/tools/summary
-
-# 2. Review pending tools
-curl http://localhost:8080/mcp/admin/tools/pending
-
-# 3. Approve safe endpoints
-curl -X POST http://localhost:8080/mcp/admin/tools/get_api_users/approve \
-  -H "Content-Type: application/json" \
-  -d '{"approvedBy": "admin@example.com"}'
-
-# 4. Bulk approve by pattern
-curl -X POST http://localhost:8080/mcp/admin/tools/approve-pattern \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pattern": "get_api_public_*",
-    "approvedBy": "admin@example.com"
-  }'
-
-# 5. Reject dangerous endpoints
-curl -X POST http://localhost:8080/mcp/admin/tools/delete_all_users/reject \
-  -H "Content-Type: application/json" \
-  -d '{
-    "rejectedBy": "security@example.com",
-    "reason": "Destructive operation"
-  }'
+open http://localhost:8080/mcp/admin/tools
 ```
 
-## 🔧 Advanced Usage
+Features:
+- View all discovered tools
+- See approval status
+- Export tool list to YAML
+- Reload configuration
 
-### Custom Tool Discovery
+### Management API
 
-You can implement your own discovery service:
+```bash
+# List all tools with approval status (paginated)
+GET /mcp/admin/tools/api/tools?page=0&size=20
 
-```java
-@Component
-public class CustomDiscoveryService implements EndpointDiscoveryService {
-    
-    @Override
-    public List<McpProtocol.Tool> discoverTools() {
-        // Your custom discovery logic
-        return tools;
-    }
-    
-    @Override
-    public String getDiscoveryType() {
-        return "Custom";
-    }
-    
-    @Override
-    public boolean isEnabled() {
-        return true;
-    }
-}
+# Reload approved tools from configuration
+POST /mcp/admin/tools/reload
+
+# Export discovered tools as YAML template
+GET /mcp/admin/tools/export/yaml
 ```
 
-### Programmatic Access
+### Development Workflow
 
-```java
-@Autowired
-private McpToolRegistry toolRegistry;
-
-public void listTools() {
-    List<McpProtocol.Tool> tools = toolRegistry.getAllTools();
-    tools.forEach(tool -> 
-        System.out.println(tool.name() + ": " + tool.description())
-    );
-}
-```
-
-### Refresh Tools at Runtime
-
+1. **Develop Tools**: Create `@Component` classes implementing `McpTool`
+2. **Discover**: Visit admin UI to see discovered tools
+3. **Export**: Download YAML template with all tools
+4. **Approve**: Edit `approved-tools.yml` to approve needed tools
+5. **Reload**: POST to `/mcp/admin/tools/reload` or restart app
 ```java
 @Autowired
 private McpToolRegistry toolRegistry;
@@ -332,89 +288,270 @@ public void refreshTools() {
 ┌─────────────────┐      ┌──────────────┐
 │ Determine Mode  │─────▶│ CONFIG_BASED │──▶ ✅ PRODUCTION (approved-tools.yml)
 └────────┬────────┘      └──────────────┘
-         │                      ├─ In YAML? ──▶ Approved
-         │                      └─ Not in YAML ──▶ Rejected
-         │
-         ├──────────────▶ MANUAL Mode (⚠️ DEV ONLY)
-         │               ┌──────────────┐
-         │               │Match Pattern?│
-         │               └──────┬───────┘
-         │                      ├─ Yes ──▶ Auto-Approved (in-memory)
-         │                      └─ No ───▶ Pending → Manual Review
-         │                              ⚠️ LOST ON RESTART
-         │
-         └──────────────▶ AUTO Mode (⚠️ DEV ONLY)
-                                └─────▶ All Approved (security risk)
+      Creating Custom Tools
 
-┌─────────────────┐
-│ Only APPROVED   │──▶ Exposed to AI Agents via /mcp
-│ Tools Exposed   │
-└─────────────────┘
-```
-
-### Tool Naming
-
-Tools are named using the following strategy:
-1. Use `operationId` from OpenAPI if available
-2. Generate from HTTP method + path (e.g., `get_users`, `post_orders`)
-3. Sanitize to alphanumeric + underscores
-4. Truncate to max length (default: 100 chars)
-
-### MCP Protocol
-
-The library implements the [Model Context Protocol](https://modelcontextprotocol.io):
-
-#### Supported Methods
-- `initialize` - Initialize the MCP session
-- `tools/list` - List all available tools
-- `tools/call` - Execute a tool
-- `x] Tool approval workflow
-- [x] Management API for tool governance
-- [ping` - Health check
-
-#### Transport
-- Server-Sent Events (SSE) for streaming
-- JSON-RPC 2.0 for request/response
-
-## 🧪 Example Project
-
-See the [example](example/) directory for a complete working example.
-
-Here's a simple REST API example:
+### Tool Interface
 
 ```java
-@SpringBootApplication
-public class DemoApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(DemoApplication.class, args);
-    }
+public interface McpTool {
+    String getName();           // Unique tool identifier
+    String getDescription();    // Human-readable description
+    JsonNode getInputSchema();  // JSON Schema for parameters
+    ToolResult execute(Map<String, Object> arguments);  // Tool logic
 }
+```
 
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
+### File Operations Example
+
+```java
+@Component
+public class ReadFileTool implements McpTool {
     
-    @GetMapping
-    public List<User> getUsers() {
-        return userService.findAll();
+    @Override
+    public String getName() {
+        return "read_file";
     }
     
-    @PostMapping
-    public User createUser(@RequestBody User user) {
-        return userService.create(user);
+    @Override
+    public String getDescription() {
+        return "Read contents of a file";
     }
     
-    @GetMapping("/{id}")
-    public User getUser(@PathVariable Long id) {
-        return userService.findById(id);
+    @Override
+    public JsonNode getInputSchema() {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode schema = mapper.createObjectNode();
+        schema.put("type", "object");
+        
+        ObjectNode properties = mapper.createObjectNode();
+        ObjectNode path = mapper.createObjectNode();
+        path.put("type", "string");
+        path.put("description", "File path to read");
+        properties.set("path", path);
+        
+        schema.set("properties", properties);
+        schema.set("required", mapper.createArrayNode().add("path"));
+        
+        return schema;
+    }
+    
+    @Override
+    public ToolResult execute(Map<String, Object> arguments) {
+        try {
+            String path = (String) arguments.get("path");
+            String content = Files.readString(Path.of(path));
+            return ToolResult.success(content);
+        } catch (IOException e) {
+            return ToolResult.error("Failed to read file: " + e.getMessage());
+    Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│              Spring Boot Application            │
+│  ┌───────────────────────────────────────────┐  │
+│  │         Auto-Configuration                │  │
+│  │  - Discovers @Component McpTool beans     │  │
+│  │  - Registers MCP endpoints                │  │
+│  │  - Configures tool registry               │  │
+│  └───────────────────────────────────────────┘  │
+│                                                 │
+│  ┌───────────────┐       ┌───────────────-───┐  │
+│  │  McpTool      │       │  Tool Approval    │  │
+│  │  Registry     │◄──────┤  Service          │  │
+│  │  - Discovery  │       │  - YAML config    │  │
+│  │  - Filtering  │       │  - Approval check │  │
+│  └───────┬───────┘       └────────────────-──┘  │
+│          │                                      │
+│          ▼                                      │
+│  ┌───────────────────────────────────────────┐  │
+│  │        MCP Controller (/mcp/sse)          │  │
+│  │  - SSE endpoint                           │  │
+│  │  - Protocol handling                      │  │
+│  │  - Tool execution                         │  │
+│  └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+                      │
+                      │ SSE (Server-Sent Events)
+                      ▼
+              ┌─────────────-─┐
+              │  AI Agent     │
+              │ (Claude, etc) │
+              └─────────────-─┘
+```
+
+### Tool Approval Flow
+
+```
+┌──────────────────┐
+│  Tool Created    │
+│  @Component      │
+│  McpTool         │
+└────────┬─────────┘
+         │
+         ▼[LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Model Context Protocol](https://modelcontextprotocol.io) - The protocol specification
+- [Spring Boot](https://spring.io/projects/spring-boot) - The application framework
+- [Anthropic](https://www.anthropic.com) - MCP protocol development
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/girisenji/spring-boot-mcp-server/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/girisenji/spring-boot-mcp-server/discussions)
+- **Email**: girisenji@gmail.com
+
+## 🗺️ Roadmap
+
+- [x] Config-driven tool approval
+- [x] SSE transport implementation
+- [x] Tool discovery and registry
+- [x] Admin UI
+- [x] Runtime configuration reload
+- [ ] WebSocket transport support
+- [ ] Resource and Prompt support
+- [ ] Enhanced metrics and monitoring
+- [ ] Rate limiting and quotas
+- [ ] Multi-tenant support
+
+## 📚 Learn More
+
+- [Model Context Protocol Specification](https://modelcontextprotocol.io)
+- [MCP GitHub Repository](https://github.com/modelcontextprotocol)
+- [Spring Boot Documentation](https://spring.io/projects/spring-boot)  
+**Transport**: Server-Sent Events (SSE)  
+**Format**: JSON-RPC 2.0
+
+**Supported Methods**:
+- `initialize`Application
+Dependencies
+
+The library requires only Spring Boot and Jackson (already included in Spring Boot):
+
+```🔒 Security
+
+**Tool Approval**: All tools are denied by default. Only tools explicitly listed in `approved-tools.yml` are exposed to AI agents.
+
+**Input Validation**: Implement proper validation in your tools:
+
+```java
+@Override
+public ToolResult execute(Map<String, Object> arguments) {
+    // Validate required parameters
+    if (!arguments.containsKey("path")) {
+        return ToolResult.error("Missing required parameter: path");
+    }
+    
+    String path = (String) arguments.get("path");
+    
+    // Validate input
+    if (path.contains("..")) {
+        return ToolResult.error("Path traversal not allowed");
+    }
+    
+    // Safe execution
+    return performOperation(path);
+}
+```
+
+**Authentication**: Integrate with Spring Security for endpoint protection:
+
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(auth -> auth
+            .requestMatchers("/mcp/sse").authenticated()
+            .requestMatchers("/mcp/admin/**").hasRole("ADMIN")
+        );
+        return http.build();
     }
 }
 ```
 
-After adding the starter dependency, these endpoints are automatically exposed as MCP tools:
-- `get_api_users` - Get all users
-- `post_api_users` - Create a new user
-- `get_api_users` - Get a specific user
+**HTTPS**: Always use HTTPS in production:
+
+```yaml
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    key-store: classpath:keystore.p12
+    key-store-password: ${KEYSTORE_PASSWORD}
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+```
+
+No additional dependencies required.
+**Application.java:**
+```java
+@SpringBootApplication
+public class McpServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(McpServerApplication.class, args);
+    }
+}
+```
+
+**EchoTool.java:**
+```java
+@Component
+public class EchoTool implements McpTool {
+    
+    @Override
+    public String getName() {
+        return "echo";
+    }
+    
+    @Override
+    public String getDescription() {
+        return "Echoes back the input message";
+    }
+    
+    @Override
+    public JsonNode getInputSchema() {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode schema = mapper.createObjectNode();
+        schema.put("type", "object");
+        
+        ObjectNode properties = mapper.createObjectNode();
+        ObjectNode message = mapper.createObjectNode();
+        message.put("type", "string");
+        message.put("description", "Message to echo");
+        properties.set("message", message);
+        
+        schema.set("properties", properties);
+        schema.set("required", mapper.createArrayNode().add("message"));
+        
+        return schema;
+    }
+    
+    @Override
+    public ToolResult execute(Map<String, Object> arguments) {
+        String message = (String) arguments.get("message");
+        return ToolResult.success("Echo: " + message);
+    }
+}
+```
+
+**approved-tools.yml:**
+```yaml
+approvedTools:
+  - echo
+```
+
+Run the application and connect AI agents to `http://localhost:8080/mcp/sse`
 
 ## 📋 Requirements
 
