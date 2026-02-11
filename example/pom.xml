@@ -44,7 +44,7 @@
 
         <!-- Auto MCP Server -->
         <dependency>
-            <groupId>com.girisenji.ai</groupId>
+            <groupId>io.github.girisenji.ai</groupId>
             <artifactId>spring-boot-mcp-server</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>

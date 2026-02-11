@@ -30,7 +30,7 @@ A Spring Boot starter library that enables your application to serve as an **MCP
 
 ### Gradle
 ```gradle
-implementation 'com.girisenji.ai:spring-boot-mcp-server:1.0.0'
+implementation 'io.github.girisenji.ai:spring-boot-mcp-server:1.0.0'
 ```
 
 ## 🎯 Quick Start

@@ -88,5 +88,5 @@ auto-mcp-server:
 # Logging configuration
 logging:
   level:
-    com.girisenji.ai: DEBUG
+    io.github.girisenji.ai: DEBUG
     org.springframework.web: INFO
