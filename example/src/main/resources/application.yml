@@ -1,0 +1,92 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: auto-mcp-demo
+
+# Springdoc OpenAPI Configuration (optional - enables OpenAPI discovery)
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+# Auto MCP Server Configuration
+auto-mcp-server:
+  # Enable/disable the MCP server
+  enabled: true
+
+  # MCP endpoint path
+  endpoint: /mcp
+
+  # Base URL for tool execution (change to your actual service URL in production)
+  base-url: http://localhost:8080
+
+  # Discovery configuration
+  discovery:
+    openapi-enabled: true
+    rest-enabled: true
+    graphql-enabled: false
+
+  # Tool configuration
+  tools:
+    # Ant-style patterns for endpoints to include
+    include-patterns:
+      - /api/**
+      - /users/**
+
+    # Ant-style patterns for endpoints to exclude
+    exclude-patterns:
+      - /actuator/**
+      - /error
+      - /mcp/**
+
+    # Maximum tool name length (truncates if longer)
+    max-tool-name-length: 100
+
+    # Use OpenAPI operationId as tool name (if available)
+    use-operation-id-as-tool-name: true
+
+    # ========================================
+    # TOOL APPROVAL - CONFIG-DRIVEN APPROACH
+    # ========================================
+    #
+    # All tool approvals are defined in approved-tools.yml (Infrastructure as Code):
+    #   - Approvals versioned in Git (auditable, repeatable)
+    #   - Changes survive restarts (no in-memory state)
+    #   - Works across all environments (dev, stage, prod)
+    #
+    # Development Workflow:
+    #   1. Run your application
+    #   2. Visit http://localhost:8080/mcp/admin/tools/yaml
+    #   3. Copy the YAML output to approved-tools.yml
+    #   4. Edit the list to approve only desired tools
+    #   5. Restart the application
+    #
+    # The /mcp/admin/tools endpoints are discovery helpers (read-only):
+    #   - GET /mcp/admin/tools - Admin UI to browse discovered tools
+    #   - GET /mcp/admin/tools/discovered - JSON list of all discovered tools
+    #   - GET /mcp/admin/tools/summary - Summary stats
+    #   - GET /mcp/admin/tools/yaml - Export as YAML format (copy to approved-tools.yml)
+    #
+    # Path to YAML file with approved tools (REQUIRED)
+    # Format:
+    #   approvedTools:
+    #     - tool_name_1
+    #     - tool_name_2
+    #
+    # Example file provided at: src/main/resources/approved-tools.yml
+    approval-config-file: classpath:approved-tools.yml
+    cache-ttl-seconds: 3600
+
+    # Maximum concurrent SSE sessions
+    max-concurrent-sessions: 100
+
+# Logging configuration
+logging:
+  level:
+    com.girisenji.ai: DEBUG
+    org.springframework.web: INFO

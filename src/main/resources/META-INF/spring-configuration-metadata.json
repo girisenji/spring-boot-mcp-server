@@ -1,0 +1,87 @@
+{
+    "properties": [
+        {
+            "name": "auto-mcp-server.enabled",
+            "type": "java.lang.Boolean",
+            "description": "Whether to enable the Auto MCP Server.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.endpoint",
+            "type": "java.lang.String",
+            "description": "The endpoint path for the MCP server.",
+            "defaultValue": "/mcp"
+        },
+        {
+            "name": "auto-mcp-server.eager-init",
+            "type": "java.lang.Boolean",
+            "description": "Whether to eagerly initialize the tool registry on startup.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.discovery.openapi-enabled",
+            "type": "java.lang.Boolean",
+            "description": "Whether to discover endpoints from OpenAPI specifications.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.discovery.rest-enabled",
+            "type": "java.lang.Boolean",
+            "description": "Whether to discover REST endpoints from Spring MVC controllers.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.discovery.graphql-enabled",
+            "type": "java.lang.Boolean",
+            "description": "Whether to discover GraphQL queries and mutations.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.tools.include-patterns",
+            "type": "java.lang.String[]",
+            "description": "Ant-style patterns for endpoints to include as tools.",
+            "defaultValue": [
+                "/**"
+            ]
+        },
+        {
+            "name": "auto-mcp-server.tools.exclude-patterns",
+            "type": "java.lang.String[]",
+            "description": "Ant-style patterns for endpoints to exclude from tools.",
+            "defaultValue": [
+                "/actuator/**",
+                "/error"
+            ]
+        },
+        {
+            "name": "auto-mcp-server.tools.max-tool-name-length",
+            "type": "java.lang.Integer",
+            "description": "Maximum length for generated tool names.",
+            "defaultValue": 100
+        },
+        {
+            "name": "auto-mcp-server.tools.use-operation-id-as-tool-name",
+            "type": "java.lang.Boolean",
+            "description": "Whether to use OpenAPI operationId as tool name when available.",
+            "defaultValue": true
+        },
+        {
+            "name": "auto-mcp-server.tools.approval-mode",
+            "type": "java.lang.String",
+            "description": "Tool approval mode: AUTO (all tools auto-approved), MANUAL (requires approval), or CONFIG_BASED (only from config file).",
+            "defaultValue": "auto"
+        },
+        {
+            "name": "auto-mcp-server.tools.auto-approve-patterns",
+            "type": "java.lang.String[]",
+            "description": "Ant-style patterns for tools to auto-approve in MANUAL mode.",
+            "defaultValue": []
+        },
+        {
+            "name": "auto-mcp-server.tools.approval-config-file",
+            "type": "java.lang.String",
+            "description": "Path to YAML file containing pre-approved tools (e.g., classpath:approved-tools.yml).",
+            "defaultValue": ""
+        }
+    ]
+}

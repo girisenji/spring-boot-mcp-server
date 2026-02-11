@@ -1,0 +1,39 @@
+# Approved Tools Configuration (CONFIG_BASED mode)
+#
+# This file defines which discovered tools are exposed to AI agents.
+# Treat this as code: commit to Git, review changes, audit modifications.
+#
+# Format: List of exact tool names (as discovered from your endpoints)
+#
+# To discover available tool names:
+#   1. Start with approval-mode: MANUAL in development
+#   2. Call GET /mcp/admin/tools/discovered to see all discovered tools
+#   3. Review and add safe tools to this list
+#   4. Switch to approval-mode: CONFIG_BASED for production
+#
+# Best Practices:
+#   - Only approve read-only operations by default
+#   - Carefully review any tools that modify data
+#   - Never approve delete/destructive operations without explicit approval
+#   - Use descriptive comments to explain why each tool is approved
+#   - Group related tools together
+
+approvedTools:
+  # User read operations - safe for AI agents
+  - get_api_users # List all users
+  - get_api_users_id # Get single user by ID
+
+  # Product read operations - safe for AI agents
+  - get_api_products # List all products
+  - get_api_products_id # Get single product by ID
+
+  # Search operations - safe (read-only)
+  - post_api_users_search # Search users with filters
+  - post_api_products_search # Search products with filters
+
+
+  # Example of tools NOT approved (dangerous operations):
+  # - delete_api_users_id      # ❌ Deletes users
+  # - post_api_users           # ❌ Creates users
+  # - put_api_products_id      # ❌ Updates products
+  # - post_api_orders_refund   # ❌ Refunds money

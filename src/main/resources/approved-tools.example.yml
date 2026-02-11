@@ -1,0 +1,16 @@
+# Example: Approved tools configuration file
+# Use with: auto-mcp-server.tools.approval-config-file=classpath:approved-tools.yml
+
+approvedTools:
+  # Public API endpoints that are safe to expose
+  - get_api_users
+  - get_api_products
+  - get_api_public_info
+
+  # Search and query operations
+  - post_api_search
+  - get_api_search_query
+
+  # Read-only operations
+  - get_api_orders
+  - get_api_customers_id
