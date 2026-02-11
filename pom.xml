@@ -177,6 +177,16 @@
 
     <build>
         <plugins>
+            <!-- Disable default deploy plugin in favor of central-publishing-maven-plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>3.1.1</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -258,6 +268,7 @@
     </build>
 
     <distributionManagement>
+        <!-- Central Publishing Maven Plugin handles deployment, no repository URLs needed -->
         <snapshotRepository>
             <id>central</id>
             <url>https://central.sonatype.com/</url>
@@ -297,12 +308,22 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.4.0</version>
+                        <version>0.6.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
                             <tokenAuth>true</tokenAuth>
                             <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                    <!-- Explicitly skip old Nexus staging plugin -->
+                    <plugin>
+                        <groupId>org.sonatype.plugins</groupId>
+                        <artifactId>nexus-staging-maven-plugin</artifactId>
+                        <version>1.6.13</version>
+                        <configuration>
+                            <skipNexusStagingDeployMojo>true</skipNexusStagingDeployMojo>
                         </configuration>
                     </plugin>
                 </plugins>
