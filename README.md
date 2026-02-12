@@ -14,12 +14,13 @@ A Spring Boot starter library that **automatically discovers your REST and Graph
 - **SSE Transport**: Implements MCP protocol over Server-Sent Events
 - **Config-Driven Security**: Explicit tool approval via version-controlled YAML - deny by default
 - **HTTP Execution**: Executes tools by making HTTP requests to your actual endpoints
-- **Admin UI**: Web interface for discovering and managing tools
+- **Management API**: REST endpoints for discovering and managing tool configurations
 - **Runtime Reload**: Reload approved tools without restart
 - **Auto-Configuration**: Add dependency and get MCP server out-of-the-box
 - **Rate Limiting**: Per-tool and per-client IP request throttling
 - **Execution Timeouts**: Configurable HTTP request timeouts
 - **Request Size Limits**: Protection against memory exhaustion
+- **Audit Logging**: Structured logging for compliance and security (PLAIN/JSON formats)
 
 ## 📦 Installation
 
@@ -183,6 +184,14 @@ auto-mcp-server:
     default-connect-timeout: PT5S       # 5 seconds connect timeout
     max-request-body-size: 10MB         # Maximum request body size
     max-response-body-size: 10MB        # Maximum response body size
+  
+  # Audit logging (optional)
+  audit:
+    enabled: true                       # Enable audit logging (default: true)
+    format: PLAIN                       # PLAIN or JSON (default: PLAIN)
+    log-tool-executions: true           # Log tool execution events
+    log-approval-changes: true          # Log tool approval changes
+    log-security-events: true           # Log rate limits, timeouts, size limits
 ```
 
 ### Advanced Tool Configuration
@@ -238,87 +247,50 @@ approvedTools:
 
 ## 🛡️ Tool Approval & Management
 
-> **⚠️ Important**: The `/mcp/admin/tools` management API is designed for **DEVELOPMENT workflow only**. In production, use `CONFIG_BASED` mode with `approved-tools.yml` versioned in Git.
-
-### Development Workflow
-
-Use the management API during development to discover and approve tools, then export to YAML for production:
-
-1. **Development**: Use `manual` mode, approve tools via API
-2. **Export**: Save approved tools to `approved-tools.yml`
-3. **Production**: Use `config-based` mode with the YAML file
-
-### Management Endpoints
-
-The library provides administrative endpoints for managing tool approvals:
-
-```bash
-# Get approval summary
-GET /mcp/admin/tools/summary
-
-# List all discovered tools
-GET /mcp/admin/tools/discovered
-
-# List approved tools (exposed to agents)
-GET /mcp/admin/tools/approved
-
-# List pending tools (need approval)
-GET /mcp/admin/tools/pending
-
-# Get specific tool status
-GET /mcp/admin/tools/{toolName}/status
-
-# Approve a tool
-POST /mcp/admin/tools/{toolName}/approve
-
-# Reject a tool
-POST /mcp/admin/tools/{toolName}/reject
-
-# Bulk approve by pattern
-POST /mcp/admin/tools/approve-pattern
-
-# Refresh discovery
-POST /mcp/admin/tools/refresh
-```
-
-### �️ Tool Management
-
-### Admin UI
-
-Access the web-based admin interface:
-
-```bash
-open http://localhost:8080/mcp/admin/tools
-```
-
-Features:
-- View all discovered tools
-- See approval status
-- Export tool list to YAML
-- Reload configuration
-
-### Management API
-
-```bash
-# List all tools with approval status (paginated)
-GET /mcp/admin/tools/api/tools?page=0&size=20
-
-# Reload approved tools from configuration
-POST /mcp/admin/tools/reload
-
-# Export discovered tools as YAML template
-GET /mcp/admin/tools/export/yaml
-```
+> **⚠️ Important**: Tool approval is YAML-based and deny-by-default. Use the Management REST API to **discover** tools during development, then approve them in `approved-tools.yml` (version controlled).
 
 ### Development Workflow
 
 1. **Develop APIs**: Create REST controllers or GraphQL resolvers
-2. **Discover**: Visit admin UI at `/mcp/admin/tools` to see discovered endpoints
-3. **Export**: Download YAML template with all discovered tools
+2. **Discover**: Call `/mcp/admin/tools/discovered` to see all discovered endpoints
+3. **Export**: Download YAML template with all discovered tools via `/mcp/admin/tools/yaml`
 4. **Approve**: Edit `approved-tools.yml` to approve safe tools for AI agents
-5. **Reload**: POST to `/mcp/admin/tools/reload` or restart application
+5. **Reload**: POST to `/mcp/admin/tools/reload` (zero downtime) or restart application
+
+### Management REST API
+
+The library provides read-only endpoints for tool discovery and YAML generation:
+
 ```bash
-# Reload approved tools without restart
+# Get summary statistics (total discovered vs approved)
+GET /mcp/admin/tools/summary
+
+# List all discovered tools with approval status
+GET /mcp/admin/tools/discovered
+
+# Generate YAML template for approved-tools.yml
+GET /mcp/admin/tools/yaml?approvedOnly=false
+
+# Refresh tool discovery (re-scan all endpoints)
+POST /mcp/admin/tools/refresh
+
+# Reload approved-tools.yml without restart (zero downtime)
+POST /mcp/admin/tools/reload
+```
+
+### Examples
+
+```bash
+# Get summary of discovered tools
+curl http://localhost:8080/mcp/admin/tools/summary
+
+# List all discovered tools with approval status
+curl http://localhost:8080/mcp/admin/tools/discovered
+
+# Export tools in YAML format for approved-tools.yml
+curl http://localhost:8080/mcp/admin/tools/yaml > approved-tools.yml
+
+# Reload configuration after editing approved-tools.yml (no restart needed)
 curl -X POST http://localhost:8080/mcp/admin/tools/reload
 ```
 
@@ -429,7 +401,7 @@ curl -X POST http://localhost:8080/mcp/admin/tools/reload
 - [x] Config-driven tool approval
 - [x] SSE transport implementation
 - [x] Tool discovery and registry
-- [x] Admin UI
+- [x] Management REST API
 - [x] Runtime configuration reload
 - [x] Rate limiting and execution timeouts
 - [ ] WebSocket transport support
@@ -591,10 +563,10 @@ See [TODO.md](TODO.md) for the complete execution plan and roadmap.
 - ✅ HTTP-based tool execution
 - ✅ YAML-based security approval
 - ✅ SSE transport
-- ✅ Admin UI
+- ✅ Management REST API
+- ✅ Enhanced security features (rate limiting, timeouts, size limits, audit logging)
 
 **High Priority (v1.1.0+):**
-- [ ] Enhanced security features (rate limiting, timeouts, audit logging)
 - [ ] WebSocket transport support
 - [ ] Metrics and monitoring
 - [ ] Performance optimizations

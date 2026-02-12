@@ -7,6 +7,7 @@ import io.github.girisenji.ai.discovery.EndpointDiscoveryService;
 import io.github.girisenji.ai.discovery.GraphQLDiscoveryService;
 import io.github.girisenji.ai.discovery.OpenApiDiscoveryService;
 import io.github.girisenji.ai.discovery.RestEndpointDiscoveryService;
+import io.github.girisenji.ai.service.AuditLogger;
 import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
 import io.github.girisenji.ai.service.RateLimitService;
@@ -106,6 +107,21 @@ public class AutoMcpServerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public AuditLogger auditLogger(
+            AutoMcpServerProperties properties,
+            ObjectMapper objectMapper) {
+
+        boolean enabled = properties.audit().enabled();
+        AuditLogger.LogFormat format = properties.audit().format() == AutoMcpServerProperties.Audit.LogFormat.JSON
+                ? AuditLogger.LogFormat.JSON
+                : AuditLogger.LogFormat.PLAIN;
+
+        log.info("Configuring audit logger (enabled: {}, format: {})", enabled, format);
+        return new AuditLogger(enabled, format, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ToolConfigurationService toolConfigurationService(
             AutoMcpServerProperties properties,
             ResourceLoader resourceLoader,
@@ -140,28 +156,31 @@ public class AutoMcpServerAutoConfiguration {
             ObjectMapper objectMapper,
             AutoMcpServerProperties properties,
             RateLimitService rateLimitService,
-            ToolConfigurationService toolConfigurationService) {
+            ToolConfigurationService toolConfigurationService,
+            AuditLogger auditLogger) {
 
         String baseUrl = properties.baseUrl();
         boolean rateLimitingEnabled = properties.rateLimiting().enabled();
         log.info(
-                "Configuring MCP tool executor with base URL: {} (rate limiting: {}, default timeout: {}, connect timeout: {})",
+                "Configuring MCP tool executor with base URL: {} (rate limiting: {}, audit: {}, default timeout: {}, connect timeout: {})",
                 baseUrl,
                 rateLimitingEnabled ? "enabled" : "disabled",
+                properties.audit().enabled() ? "enabled" : "disabled",
                 properties.execution().defaultTimeout(),
                 properties.execution().defaultConnectTimeout());
         return new McpToolExecutor(applicationContext, objectMapper, baseUrl, rateLimitService,
-                rateLimitingEnabled, toolConfigurationService, properties);
+                rateLimitingEnabled, toolConfigurationService, properties, auditLogger);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public ToolManagementController toolManagementController(
             McpToolRegistry toolRegistry,
-            ToolConfigurationService toolConfigService) {
+            ToolConfigurationService toolConfigService,
+            AuditLogger auditLogger) {
 
         log.info("Configuring tool management controller");
-        return new ToolManagementController(toolRegistry, toolConfigService);
+        return new ToolManagementController(toolRegistry, toolConfigService, auditLogger);
     }
 
     /**

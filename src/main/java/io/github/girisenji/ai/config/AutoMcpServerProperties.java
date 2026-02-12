@@ -20,7 +20,8 @@ public record AutoMcpServerProperties(
         @DefaultValue Tools tools,
         @DefaultValue Performance performance,
         @DefaultValue RateLimiting rateLimiting,
-        @DefaultValue Execution execution) {
+        @DefaultValue Execution execution,
+        @DefaultValue Audit audit) {
 
     /**
      * Discovery configuration for different API types.
@@ -160,8 +161,42 @@ public record AutoMcpServerProperties(
         }
     }
 
+    /**
+     * Audit logging configuration.
+     * 
+     * @param enabled            Whether audit logging is enabled
+     * @param format             Log format (PLAIN or JSON)
+     * @param logToolExecutions  Whether to log tool execution events
+     * @param logApprovalChanges Whether to log approval change events
+     * @param logSecurityEvents  Whether to log security events (rate limits,
+     *                           timeouts, size limits)
+     */
+    public record Audit(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("PLAIN") LogFormat format,
+            @DefaultValue("true") boolean logToolExecutions,
+            @DefaultValue("true") boolean logApprovalChanges,
+            @DefaultValue("true") boolean logSecurityEvents) {
+
+        public enum LogFormat {
+            /**
+             * Human-readable plain text format.
+             */
+            PLAIN,
+
+            /**
+             * Structured JSON format for SIEM integration.
+             */
+            JSON
+        }
+
+        public Audit() {
+            this(true, LogFormat.PLAIN, true, true, true);
+        }
+    }
+
     public AutoMcpServerProperties() {
         this(true, "/mcp", "http://localhost:8080", new Discovery(), new Tools(), new Performance(),
-                new RateLimiting(), new Execution());
+                new RateLimiting(), new Execution(), new Audit());
     }
 }

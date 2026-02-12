@@ -1,13 +1,17 @@
 package io.github.girisenji.ai.controller;
 
 import io.github.girisenji.ai.mcp.McpProtocol;
+import io.github.girisenji.ai.service.AuditLogger;
 import io.github.girisenji.ai.service.McpToolRegistry;
 import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Map;
@@ -36,14 +40,21 @@ import java.util.stream.Collectors;
 @Tag(name = "Tool Discovery", description = "Discover tools and generate configuration")
 public class ToolManagementController {
 
+    private static final String UNKNOWN_CLIENT_IP = "unknown";
+    private static final String HEADER_X_FORWARDED_FOR = "X-Forwarded-For";
+    private static final String HEADER_X_REAL_IP = "X-Real-IP";
+
     private final McpToolRegistry toolRegistry;
     private final ToolConfigurationService toolConfigService;
+    private final AuditLogger auditLogger;
 
     public ToolManagementController(
             McpToolRegistry toolRegistry,
-            ToolConfigurationService toolConfigService) {
+            ToolConfigurationService toolConfigService,
+            AuditLogger auditLogger) {
         this.toolRegistry = toolRegistry;
         this.toolConfigService = toolConfigService;
+        this.auditLogger = auditLogger;
     }
 
     /**
@@ -138,10 +149,87 @@ public class ToolManagementController {
     @PostMapping("/refresh")
     @Operation(summary = "Refresh tool discovery", description = "Re-scan application for new endpoints")
     public Map<String, Object> refreshDiscovery() {
+        String clientIP = getClientIP();
+
+        // Log config reload action (audit as approval change since it affects what
+        // tools are available)
+        auditLogger.logApprovalChange(
+                "system",
+                clientIP,
+                true,
+                "Tool discovery refresh triggered");
+
         toolRegistry.refreshTools();
         return Map.of(
                 "message", "Tool discovery refreshed",
                 "summary", getSummary());
+    }
+
+    /**
+     * Reload approved tools from approved-tools.yml configuration file.
+     * 
+     * <p>
+     * Allows updating tool approvals without restarting the application:
+     * <ol>
+     * <li>Edit approved-tools.yml file</li>
+     * <li>Call this endpoint to reload configuration</li>
+     * <li>Changes take effect immediately</li>
+     * </ol>
+     */
+    @PostMapping("/reload")
+    @Operation(summary = "Reload approved tools from YAML", description = "Reload approved-tools.yml without restarting")
+    public Map<String, Object> reloadConfiguration() {
+        String clientIP = getClientIP();
+
+        // Capture old state for audit
+        int oldApprovedCount = toolConfigService.getApprovedCount();
+
+        // Reload configuration
+        toolConfigService.reloadApprovedTools();
+
+        // Capture new state
+        int newApprovedCount = toolConfigService.getApprovedCount();
+
+        // Log the reload action
+        auditLogger.logApprovalChange(
+                "approved-tools.yml",
+                clientIP,
+                true,
+                String.format("Configuration reloaded: %d → %d approved tools", oldApprovedCount, newApprovedCount));
+
+        return Map.of(
+                "message", "Approved tools configuration reloaded successfully",
+                "previousCount", oldApprovedCount,
+                "currentCount", newApprovedCount,
+                "summary", getSummary());
+    }
+
+    /**
+     * Get client IP address from current HTTP request.
+     */
+    private String getClientIP() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return UNKNOWN_CLIENT_IP;
+        }
+
+        HttpServletRequest request = attributes.getRequest();
+
+        // Check X-Forwarded-For header (for proxied requests)
+        String forwardedFor = request.getHeader(HEADER_X_FORWARDED_FOR);
+        if (forwardedFor != null && !forwardedFor.isEmpty()) {
+            return forwardedFor.split(",")[0].trim();
+        }
+
+        // Check X-Real-IP header
+        String realIP = request.getHeader(HEADER_X_REAL_IP);
+        if (realIP != null && !realIP.isEmpty()) {
+            return realIP;
+        }
+
+        // Fall back to remote address
+        String remoteAddr = request.getRemoteAddr();
+        return remoteAddr != null ? remoteAddr : UNKNOWN_CLIENT_IP;
     }
 
     // Response DTOs

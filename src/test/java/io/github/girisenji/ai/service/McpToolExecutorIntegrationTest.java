@@ -22,217 +22,227 @@ import static org.mockito.Mockito.mock;
  */
 class McpToolExecutorIntegrationTest {
 
-    private ObjectMapper objectMapper;
-    private ApplicationContext applicationContext;
-    private RateLimitService rateLimitService;
-    private ToolConfigurationService toolConfigurationService;
-    private AutoMcpServerProperties properties;
-    private McpToolExecutor executor;
+        private ObjectMapper objectMapper;
+        private ApplicationContext applicationContext;
+        private RateLimitService rateLimitService;
+        private ToolConfigurationService toolConfigurationService;
+        private AutoMcpServerProperties properties;
+        private McpToolExecutor executor;
+        private AuditLogger auditLogger;
 
-    @BeforeEach
-    void setUp() {
-        objectMapper = new ObjectMapper();
-        applicationContext = mock(ApplicationContext.class);
-        rateLimitService = new RateLimitService(100);
+        @BeforeEach
+        void setUp() {
+                objectMapper = new ObjectMapper();
+                applicationContext = mock(ApplicationContext.class);
+                rateLimitService = new RateLimitService(100);
+                auditLogger = new AuditLogger(false, AuditLogger.LogFormat.PLAIN, objectMapper); // Disabled for tests
 
-        // Create real ToolConfigurationService with null config file (empty approved
-        // tools)
-        AutoMcpServerProperties.Tools toolsConfig = new AutoMcpServerProperties.Tools(
-                new String[] { "/**" },
-                new String[] { "/actuator/**" },
-                100,
-                true,
-                null, // null config file - no approved tools needed for these tests
-                AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS,
-                false);
+                // Create real ToolConfigurationService with null config file (empty approved
+                // tools)
+                AutoMcpServerProperties.Tools toolsConfig = new AutoMcpServerProperties.Tools(
+                                new String[] { "/**" },
+                                new String[] { "/actuator/**" },
+                                100,
+                                true,
+                                null, // null config file - no approved tools needed for these tests
+                                AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS,
+                                false);
 
-        AutoMcpServerProperties testProperties = new AutoMcpServerProperties(
-                true,
-                "/mcp",
-                "http://localhost:8080",
-                new AutoMcpServerProperties.Discovery(),
-                toolsConfig,
-                new AutoMcpServerProperties.Performance(),
-                new AutoMcpServerProperties.RateLimiting(true, 100),
-                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"));
+                AutoMcpServerProperties testProperties = new AutoMcpServerProperties(
+                                true,
+                                "/mcp",
+                                "http://localhost:8080",
+                                new AutoMcpServerProperties.Discovery(),
+                                toolsConfig,
+                                new AutoMcpServerProperties.Performance(),
+                                new AutoMcpServerProperties.RateLimiting(true, 100),
+                                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"),
+                                new AutoMcpServerProperties.Audit());
 
-        ResourceLoader resourceLoader = mock(ResourceLoader.class);
-        toolConfigurationService = new ToolConfigurationService(testProperties, resourceLoader, rateLimitService);
+                ResourceLoader resourceLoader = mock(ResourceLoader.class);
+                toolConfigurationService = new ToolConfigurationService(testProperties, resourceLoader,
+                                rateLimitService);
 
-        // Mock properties with default timeouts
-        properties = new AutoMcpServerProperties(
-                true, // enabled
-                "/mcp", // endpoint
-                "http://localhost:8080", // baseUrl
-                new AutoMcpServerProperties.Discovery(),
-                new AutoMcpServerProperties.Tools(),
-                new AutoMcpServerProperties.Performance(),
-                new AutoMcpServerProperties.RateLimiting(true, 100),
-                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"));
+                // Mock properties with default timeouts
+                properties = new AutoMcpServerProperties(
+                                true, // enabled
+                                "/mcp", // endpoint
+                                "http://localhost:8080", // baseUrl
+                                new AutoMcpServerProperties.Discovery(),
+                                new AutoMcpServerProperties.Tools(),
+                                new AutoMcpServerProperties.Performance(),
+                                new AutoMcpServerProperties.RateLimiting(true, 100),
+                                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"),
+                                new AutoMcpServerProperties.Audit());
 
-        // Clear any request context from previous tests
-        RequestContextHolder.resetRequestAttributes();
-    }
-
-    @Test
-    void shouldEnforceRateLimitWhenEnabled() {
-        // Given - Executor with rate limiting enabled
-        executor = new McpToolExecutor(
-                applicationContext,
-                objectMapper,
-                "http://localhost:8080",
-                rateLimitService,
-                true, // rate limiting enabled
-                toolConfigurationService,
-                properties);
-
-        // Register a rate limit for test tool
-        RateLimitConfig config = new RateLimitConfig(2, Duration.ofMinutes(1));
-        rateLimitService.registerRateLimit("testTool", config);
-
-        // Register metadata for the tool
-        ToolExecutionMetadata metadata = new ToolExecutionMetadata(
-                "/api/test",
-                HttpMethod.GET,
-                Map.of(),
-                "application/json",
-                "REST");
-        executor.registerToolMetadata("testTool", metadata);
-
-        // When/Then - First 2 requests should succeed (but will fail due to no HTTP
-        // server, that's OK)
-        // We're testing rate limiting logic, not HTTP execution
-        var result1 = executor.executeTool("testTool", Map.of());
-        var result2 = executor.executeTool("testTool", Map.of());
-        var result3 = executor.executeTool("testTool", Map.of());
-
-        // Third request should be rate limited
-        assertThat(result3.isError()).isTrue();
-        assertThat(result3.content()).hasSize(1);
-        assertThat(result3.content().get(0).text()).contains("Rate limit exceeded");
-    }
-
-    @Test
-    void shouldNotEnforceRateLimitWhenDisabled() {
-        // Given - Executor with rate limiting disabled
-        executor = new McpToolExecutor(
-                applicationContext,
-                objectMapper,
-                "http://localhost:8080",
-                rateLimitService,
-                false, // rate limiting disabled
-                toolConfigurationService,
-                properties);
-
-        // Register a strict rate limit
-        RateLimitConfig config = new RateLimitConfig(1, Duration.ofMinutes(1));
-        rateLimitService.registerRateLimit("testTool", config);
-
-        // Register metadata for the tool
-        ToolExecutionMetadata metadata = new ToolExecutionMetadata(
-                "/api/test",
-                HttpMethod.GET,
-                Map.of(),
-                "application/json",
-                "REST");
-        executor.registerToolMetadata("testTool", metadata);
-
-        // When - Make multiple requests (more than the limit)
-        var result1 = executor.executeTool("testTool", Map.of());
-        var result2 = executor.executeTool("testTool", Map.of());
-        var result3 = executor.executeTool("testTool", Map.of());
-
-        // Then - Should not be rate limited (will fail on HTTP, but not on rate
-        // limiting)
-        // All should have error messages about HTTP execution, not rate limiting
-        assertThat(result1.content().get(0).text()).doesNotContain("Rate limit exceeded");
-        assertThat(result2.content().get(0).text()).doesNotContain("Rate limit exceeded");
-        assertThat(result3.content().get(0).text()).doesNotContain("Rate limit exceeded");
-    }
-
-    @Test
-    void shouldProvideHelpfulErrorMessageOnRateLimit() {
-        // Given
-        executor = new McpToolExecutor(
-                applicationContext,
-                objectMapper,
-                "http://localhost:8080",
-                rateLimitService,
-                true,
-                toolConfigurationService,
-                properties);
-
-        RateLimitConfig config = new RateLimitConfig(5, Duration.ofHours(1));
-        rateLimitService.registerRateLimit("testTool", config);
-
-        ToolExecutionMetadata metadata = new ToolExecutionMetadata(
-                "/api/test",
-                HttpMethod.GET,
-                Map.of(),
-                "application/json",
-                "REST");
-        executor.registerToolMetadata("testTool", metadata);
-
-        // When - Exhaust the limit
-        for (int i = 0; i < 5; i++) {
-            executor.executeTool("testTool", Map.of());
+                // Clear any request context from previous tests
+                RequestContextHolder.resetRequestAttributes();
         }
-        var result = executor.executeTool("testTool", Map.of());
 
-        // Then - Error message should be informative
-        String errorMessage = result.content().get(0).text();
-        assertThat(errorMessage).contains("Rate limit exceeded");
-        assertThat(errorMessage).contains("testTool");
-        assertThat(errorMessage).contains("5 requests");
-        assertThat(errorMessage).contains("1 hour");
-    }
+        @Test
+        void shouldEnforceRateLimitWhenEnabled() {
+                // Given - Executor with rate limiting enabled
+                executor = new McpToolExecutor(
+                                applicationContext,
+                                objectMapper,
+                                "http://localhost:8080",
+                                rateLimitService,
+                                true, // rate limiting enabled
+                                toolConfigurationService,
+                                properties,
+                                auditLogger);
 
-    @Test
-    void shouldUseDefaultRateLimitForUnconfiguredTools() {
-        // Given - Tool without specific rate limit configuration
-        executor = new McpToolExecutor(
-                applicationContext,
-                objectMapper,
-                "http://localhost:8080",
-                new RateLimitService(2), // default: 2 requests/hour
-                true,
-                toolConfigurationService,
-                properties);
+                // Register a rate limit for test tool
+                RateLimitConfig config = new RateLimitConfig(2, Duration.ofMinutes(1));
+                rateLimitService.registerRateLimit("testTool", config);
 
-        ToolExecutionMetadata metadata = new ToolExecutionMetadata(
-                "/api/test",
-                HttpMethod.GET,
-                Map.of(),
-                "application/json",
-                "REST");
-        executor.registerToolMetadata("unconfiguredTool", metadata);
+                // Register metadata for the tool
+                ToolExecutionMetadata metadata = new ToolExecutionMetadata(
+                                "/api/test",
+                                HttpMethod.GET,
+                                Map.of(),
+                                "application/json",
+                                "REST");
+                executor.registerToolMetadata("testTool", metadata);
 
-        // When - Make requests up to default limit
-        var result1 = executor.executeTool("unconfiguredTool", Map.of());
-        var result2 = executor.executeTool("unconfiguredTool", Map.of());
-        var result3 = executor.executeTool("unconfiguredTool", Map.of());
+                // When/Then - First 2 requests should succeed (but will fail due to no HTTP
+                // server, that's OK)
+                // We're testing rate limiting logic, not HTTP execution
+                var result1 = executor.executeTool("testTool", Map.of());
+                var result2 = executor.executeTool("testTool", Map.of());
+                var result3 = executor.executeTool("testTool", Map.of());
 
-        // Then - Should be rate limited based on default
-        assertThat(result3.content().get(0).text()).contains("Rate limit exceeded");
-    }
+                // Third request should be rate limited
+                assertThat(result3.isError()).isTrue();
+                assertThat(result3.content()).hasSize(1);
+                assertThat(result3.content().get(0).text()).contains("Rate limit exceeded");
+        }
 
-    @Test
-    void shouldHandleMissingToolMetadata() {
-        // Given
-        executor = new McpToolExecutor(
-                applicationContext,
-                objectMapper,
-                "http://localhost:8080",
-                rateLimitService,
-                true,
-                toolConfigurationService,
-                properties);
+        @Test
+        void shouldNotEnforceRateLimitWhenDisabled() {
+                // Given - Executor with rate limiting disabled
+                executor = new McpToolExecutor(
+                                applicationContext,
+                                objectMapper,
+                                "http://localhost:8080",
+                                rateLimitService,
+                                false, // rate limiting disabled
+                                toolConfigurationService,
+                                properties,
+                                auditLogger);
 
-        // When - Execute tool without registering metadata
-        var result = executor.executeTool("unknownTool", Map.of());
+                // Register a strict rate limit
+                RateLimitConfig config = new RateLimitConfig(1, Duration.ofMinutes(1));
+                rateLimitService.registerRateLimit("testTool", config);
 
-        // Then - Should return helpful error
-        assertThat(result.isError()).isTrue();
-        assertThat(result.content().get(0).text()).contains("execution metadata not available");
-    }
+                // Register metadata for the tool
+                ToolExecutionMetadata metadata = new ToolExecutionMetadata(
+                                "/api/test",
+                                HttpMethod.GET,
+                                Map.of(),
+                                "application/json",
+                                "REST");
+                executor.registerToolMetadata("testTool", metadata);
+
+                // When - Make multiple requests (more than the limit)
+                var result1 = executor.executeTool("testTool", Map.of());
+                var result2 = executor.executeTool("testTool", Map.of());
+                var result3 = executor.executeTool("testTool", Map.of());
+
+                // Then - Should not be rate limited (will fail on HTTP, but not on rate
+                // limiting)
+                // All should have error messages about HTTP execution, not rate limiting
+                assertThat(result1.content().get(0).text()).doesNotContain("Rate limit exceeded");
+                assertThat(result2.content().get(0).text()).doesNotContain("Rate limit exceeded");
+                assertThat(result3.content().get(0).text()).doesNotContain("Rate limit exceeded");
+        }
+
+        @Test
+        void shouldProvideHelpfulErrorMessageOnRateLimit() {
+                // Given
+                executor = new McpToolExecutor(
+                                applicationContext,
+                                objectMapper,
+                                "http://localhost:8080",
+                                rateLimitService,
+                                true,
+                                toolConfigurationService,
+                                properties,
+                                auditLogger);
+
+                RateLimitConfig config = new RateLimitConfig(5, Duration.ofHours(1));
+                rateLimitService.registerRateLimit("testTool", config);
+
+                ToolExecutionMetadata metadata = new ToolExecutionMetadata(
+                                "/api/test",
+                                HttpMethod.GET,
+                                Map.of(),
+                                "application/json",
+                                "REST");
+                executor.registerToolMetadata("testTool", metadata);
+
+                // When - Exhaust the limit
+                for (int i = 0; i < 5; i++) {
+                        executor.executeTool("testTool", Map.of());
+                }
+                var result = executor.executeTool("testTool", Map.of());
+
+                // Then - Error message should be informative
+                String errorMessage = result.content().get(0).text();
+                assertThat(errorMessage).contains("Rate limit exceeded");
+                assertThat(errorMessage).contains("testTool");
+                assertThat(errorMessage).contains("5 requests");
+                assertThat(errorMessage).contains("1 hour");
+        }
+
+        @Test
+        void shouldUseDefaultRateLimitForUnconfiguredTools() {
+                // Given - Tool without specific rate limit configuration
+                executor = new McpToolExecutor(
+                                applicationContext,
+                                objectMapper,
+                                "http://localhost:8080",
+                                new RateLimitService(2), // default: 2 requests/hour
+                                true,
+                                toolConfigurationService,
+                                properties,
+                                auditLogger);
+
+                ToolExecutionMetadata metadata = new ToolExecutionMetadata(
+                                "/api/test",
+                                HttpMethod.GET,
+                                Map.of(),
+                                "application/json",
+                                "REST");
+                executor.registerToolMetadata("unconfiguredTool", metadata);
+
+                // When - Make requests up to default limit
+                var result1 = executor.executeTool("unconfiguredTool", Map.of());
+                var result2 = executor.executeTool("unconfiguredTool", Map.of());
+                var result3 = executor.executeTool("unconfiguredTool", Map.of());
+
+                // Then - Should be rate limited based on default
+                assertThat(result3.content().get(0).text()).contains("Rate limit exceeded");
+        }
+
+        @Test
+        void shouldHandleMissingToolMetadata() {
+                // Given
+                executor = new McpToolExecutor(
+                                applicationContext,
+                                objectMapper,
+                                "http://localhost:8080",
+                                rateLimitService,
+                                true,
+                                toolConfigurationService,
+                                properties,
+                                auditLogger);
+
+                // When - Execute tool without registering metadata
+                var result = executor.executeTool("unknownTool", Map.of());
+
+                // Then - Should return helpful error
+                assertThat(result.isError()).isTrue();
+                assertThat(result.content().get(0).text()).contains("execution metadata not available");
+        }
 }

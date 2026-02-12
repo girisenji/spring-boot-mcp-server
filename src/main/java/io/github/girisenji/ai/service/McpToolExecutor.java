@@ -50,6 +50,9 @@ public class McpToolExecutor {
     private final ExecutionTimeout defaultTimeout;
     private final ExecutionTimeout defaultConnectTimeout;
     private final SizeLimit defaultSizeLimit;
+    private final AuditLogger auditLogger;
+    private final boolean auditToolExecutions;
+    private final boolean auditSecurityEvents;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
@@ -58,7 +61,8 @@ public class McpToolExecutor {
             RateLimitService rateLimitService,
             boolean rateLimitingEnabled,
             ToolConfigurationService toolConfigurationService,
-            AutoMcpServerProperties properties) {
+            AutoMcpServerProperties properties,
+            AuditLogger auditLogger) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
         this.defaultRestTemplate = new RestTemplate();
@@ -72,6 +76,9 @@ public class McpToolExecutor {
                 properties.execution().maxRequestBodySize(),
                 properties.execution().maxResponseBodySize());
         this.defaultConnectTimeout = ExecutionTimeout.parse(properties.execution().defaultConnectTimeout());
+        this.auditLogger = auditLogger;
+        this.auditToolExecutions = properties.audit().logToolExecutions();
+        this.auditSecurityEvents = properties.audit().logSecurityEvents();
     }
 
     /**
@@ -88,21 +95,33 @@ public class McpToolExecutor {
      * Configures execution timeout per tool or uses global default.
      */
     public McpProtocol.CallToolResult executeTool(String toolName, Map<String, Object> arguments) {
+        long startTime = System.currentTimeMillis();
+        String clientIP = getClientIP();
+        boolean success = false;
+        String errorMessage = null;
+
         try {
             log.info("Executing tool: {} with arguments: {}", toolName, arguments);
-
-            // Get client IP for rate limiting
-            String clientIP = getClientIP();
 
             // Check rate limit (only if enabled)
             if (rateLimitingEnabled && !rateLimitService.allowRequest(toolName, clientIP)) {
                 RateLimitService.RateLimitStatus status = rateLimitService.getStatus(toolName, clientIP);
-                String errorMessage = String.format(
+                errorMessage = String.format(
                         "Rate limit exceeded for tool '%s'. Limit: %d requests per %s. Please try again later.",
                         toolName,
                         status.maxRequests(),
                         formatDuration(status.window()));
                 log.warn("Rate limit exceeded for tool '{}' from IP '{}'", toolName, clientIP);
+
+                // Audit rate limit exceeded
+                if (auditSecurityEvents) {
+                    auditLogger.logRateLimitExceeded(
+                            toolName,
+                            clientIP,
+                            status.currentRequests(),
+                            status.maxRequests());
+                }
+
                 return new McpProtocol.CallToolResult(
                         List.of(McpProtocol.Content.text(errorMessage)),
                         true);
@@ -111,10 +130,10 @@ public class McpToolExecutor {
             // Execute HTTP request to the tool endpoint
             ToolExecutionMetadata metadata = executionMetadata.get(toolName);
             if (metadata == null) {
+                errorMessage = "Tool execution metadata not available. Tool may require manual configuration.";
                 log.warn("No execution metadata found for tool: {}", toolName);
                 return new McpProtocol.CallToolResult(
-                        List.of(McpProtocol.Content.text(
-                                "Tool execution metadata not available. Tool may require manual configuration.")),
+                        List.of(McpProtocol.Content.text(errorMessage)),
                         true);
             }
 
@@ -128,34 +147,111 @@ public class McpToolExecutor {
                     .orElse(defaultSizeLimit);
 
             // Validate request body size
-            validateRequestBodySize(arguments, sizeLimit, toolName);
+            try {
+                validateRequestBodySize(arguments, sizeLimit, toolName);
+            } catch (IllegalArgumentException e) {
+                errorMessage = e.getMessage();
+
+                // Audit size limit exceeded
+                if (auditSecurityEvents) {
+                    String json = objectMapper.writeValueAsString(arguments);
+                    long actualSize = json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+                    auditLogger.logSizeLimitExceeded(
+                            toolName,
+                            clientIP,
+                            errorMessage,
+                            actualSize,
+                            sizeLimit.maxRequestBodyBytes());
+                }
+
+                throw e;
+            }
 
             // Execute the HTTP request with timeout
             ResponseEntity<String> response = executeHttpRequest(metadata, arguments, timeout, connectTimeout);
 
             // Validate response body size
-            validateResponseBodySize(response, sizeLimit, toolName);
+            try {
+                validateResponseBodySize(response, sizeLimit, toolName);
+            } catch (IllegalArgumentException e) {
+                errorMessage = e.getMessage();
+
+                // Audit size limit exceeded
+                if (auditSecurityEvents) {
+                    String body = response.getBody();
+                    long actualSize = body != null
+                            ? body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                            : 0;
+                    auditLogger.logSizeLimitExceeded(
+                            toolName,
+                            clientIP,
+                            errorMessage,
+                            actualSize,
+                            sizeLimit.maxResponseBodyBytes());
+                }
+
+                throw e;
+            }
 
             // Convert response to tool result
-            return convertResponseToToolResult(response);
+            McpProtocol.CallToolResult result = convertResponseToToolResult(response);
+            success = !result.isError();
+
+            // Audit successful execution
+            if (auditToolExecutions) {
+                long durationMs = System.currentTimeMillis() - startTime;
+                auditLogger.logToolExecution(
+                        toolName,
+                        arguments,
+                        clientIP,
+                        success,
+                        success ? null : "HTTP error: " + response.getStatusCode(),
+                        durationMs);
+            }
+
+            return result;
 
         } catch (ResourceAccessException e) {
             // Handle timeout exceptions
             log.error("Timeout executing tool: {}", toolName, e);
             ExecutionTimeout timeout = toolConfigurationService.getTimeoutConfig(toolName)
                     .orElse(defaultTimeout);
-            String errorMessage = String.format(
+            errorMessage = String.format(
                     "Request timeout for tool '%s'. Timeout limit: %s. The operation took too long to complete.",
                     toolName,
                     timeout.timeout());
+
+            // Audit timeout event
+            if (auditSecurityEvents) {
+                auditLogger.logExecutionTimeout(
+                        toolName,
+                        clientIP,
+                        errorMessage,
+                        timeout.toMillis());
+            }
+
             return new McpProtocol.CallToolResult(
                     List.of(McpProtocol.Content.text(errorMessage)),
                     true);
         } catch (Exception e) {
             log.error("Failed to execute tool: {}", toolName, e);
+            errorMessage = "Error: " + e.getMessage();
+
             return new McpProtocol.CallToolResult(
-                    List.of(McpProtocol.Content.text("Error: " + e.getMessage())),
+                    List.of(McpProtocol.Content.text(errorMessage)),
                     true);
+        } finally {
+            // Audit failed execution (if not already audited as successful)
+            if (!success && auditToolExecutions && errorMessage != null) {
+                long durationMs = System.currentTimeMillis() - startTime;
+                auditLogger.logToolExecution(
+                        toolName,
+                        arguments,
+                        clientIP,
+                        false,
+                        errorMessage,
+                        durationMs);
+            }
         }
     }
 

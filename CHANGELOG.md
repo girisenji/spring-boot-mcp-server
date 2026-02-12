@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Management REST API**: Configuration reload endpoint for zero-downtime updates
+  - `POST /mcp/admin/tools/reload` - Reload approved-tools.yml without restart
+  - Audit logging for reload operations with before/after counts
+  - Comprehensive tests for ToolManagementController (10 tests)
 - **Rate Limiting**: Per-tool and per-client IP rate limiting with Caffeine cache
   - Configurable limits via `approved-tools.yml` (ISO-8601 duration format: PT1H, PT30M, etc.)
   - Default limit: 100 requests/hour (configurable via `auto-mcp-server.rate-limiting.default-requests-per-hour`)
@@ -38,8 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Long type support (up to exabyte scale)
   - User-friendly error messages showing actual vs allowed sizes
   - Request validation before HTTP execution, response validation after
+- **Audit Logging**: Comprehensive structured logging for security and compliance
+  - Event types: TOOL_EXECUTION, APPROVAL_CHANGE, RATE_LIMIT_EXCEEDED, EXECUTION_TIMEOUT, SIZE_LIMIT_EXCEEDED
+  - Log formats: PLAIN (human-readable key=value) and JSON (SIEM-compatible)
+  - Automatic sensitive data redaction for password, token, apiKey, secret, auth fields (case-insensitive, nested)
+  - Default configuration: Enabled with PLAIN format, all event types logged
+  - Per-event-type toggles via `auto-mcp-server.audit.*` properties
+  - Integration: Spring Boot logging framework (INFO for success, WARN for failures/security events)
 
 ### Changed
+- **Documentation**: README.md updated to reflect actual Management REST API endpoints
+  - Removed non-existent runtime approval endpoints (approve, reject, approve-pattern)
+  - Clarified API is for discovery and YAML generation, not dynamic approval
+  - Added reload endpoint documentation with examples
 - **Service Naming**: `ToolApprovalService` → `ToolConfigurationService`
   - Reflects actual behavior: manages configuration (allowed-list + rate limits), not dynamic approval
   - Updated all references across controllers, registries, tests, and documentation
@@ -49,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Human-readable duration formatting in error messages
   - Timeout-aware RestTemplate creation per execution
   - Request and response size validation
-- **AutoMcpServerProperties**: Added `Execution
+- **AutoMcpServerProperties**: Added `Execution`, `RateLimiting`, and `Audit` configuration records
 - **ExecutionTimeout**: New model for timeout configuration
   - Validates ISO-8601 duration format
   - Converts to milliseconds for HTTP client configuration
@@ -57,7 +72,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SizeLimit**: New model for request/response size limits
   - Parses human-readable sizes (10MB, 1GB, 512KB)
   - Case-insensitive, handles whitespace
-  - Null-s56 new tests** for security and reliability features
+  - Null-safe defaults
+- **AuditLogger**: Service for structured audit logging
+  - Formats: PLAIN (human-readable) and JSON (SIEM-compatible)
+  - Automatic sensitive data sanitization (password, token, apiKey, secret, auth - case-insensitive, nested)
+  - Event types: TOOL_EXECUTION, APPROVAL_CHANGE, RATE_LIMIT_EXCEEDED, EXECUTION_TIMEOUT, SIZE_LIMIT_EXCEEDED
+  - Configuration-driven event type filtering
+- **AuditEvent**: Immutable record model for audit events
+  - Factory methods for each event type
+  - Timestamp, client IP, success flag, error message, metadata
+
+### Testing
+- Added **73 new tests** for security and reliability features
   - **Rate Limiting** (15 tests):
     - 8 tests in `RateLimitServiceTest` (enforcement, per-client/per-tool tracking, status, reset, defaults)
     - 5 tests in `McpToolExecutorIntegrationTest` (enabled/disabled enforcement, error messages)
@@ -68,23 +94,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Request Size Limits** (26 tests):
     - 26 tests in `SizeLimitTest` (size parsing, validation, formatting)
     - Coverage: MB/GB/KB/bytes parsing, case-insensitivity, whitespace, null defaults, byte formatting
-- **Total: 102 tests, 0 failures** ✅
-- **Code coverage**: Comprehensive test coverage for all new security and reliability
-  - Parse method validates ISO-8601 duration format
-  - Clear exceptions for invalid window formats
+  - **Audit Logging** (17 tests):
+    - 17 tests in `AuditLoggerTest` (PLAIN/JSON formats, argument sanitization, security events)
+    - Coverage: enabled/disabled, format tests, sensitive field redaction, all event types, log levels
+- **Total: 119 tests, 0 failures** ✅
+- **Code coverage**: Comprehensive test coverage for all new security and reliability features
 
 ### Fixed
 - JavaDoc coverage for all public classes, records, and methods
 - Added constants for magic strings (header names, default values)
 - Improved error handling and validation throughout rate limiting system
-
-### Testing
-- Added **15 new tests** for rate limiting functionality
-  - 8 tests in `RateLimitServiceTest` (rate limit enforcement, per-client/per-tool tracking, status, reset, defaults)
-  - 5 tests in `McpToolExecutorIntegrationTest` (enabled/disabled enforcement, error messages, metadata handling)
-  - 10 tests in `ToolConfigurationServiceTest` (YAML loading, rate limits, reload, validation)
-- **Total: 61 tests, 0 failures** ✅
-- **Code coverage**: Comprehensive test coverage for all new rate limiting code
+- Fixed sensitive field sanitization to be properly case-insensitive
+- Added JavaTimeModule to ObjectMapper test instances for Instant serialization
 
 ## [1.0.0] - 2026-02-11
 
@@ -99,7 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config-driven tool approval system via `approved-tools.yml`
 - `ToolApprovalService` for managing approved tools
 - `McpToolRegistry` for tool registration and filtering
-- Admin UI at `/mcp/admin/tools` for tool management
+- Tool Management API at `/mcp/admin/tools` for tool discovery and configuration
 - **HTTP-based tool execution** - forwards tool calls to REST/GraphQL endpoints
 - REST API for tool management:
   - `GET /mcp/admin/tools/api/tools` - List tools with pagination
