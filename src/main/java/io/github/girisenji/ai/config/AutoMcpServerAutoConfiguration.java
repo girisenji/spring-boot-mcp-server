@@ -3,6 +3,7 @@ package io.github.girisenji.ai.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.controller.McpController;
 import io.github.girisenji.ai.controller.ToolManagementController;
+import io.github.girisenji.ai.discovery.CustomToolDiscoveryService;
 import io.github.girisenji.ai.discovery.EndpointDiscoveryService;
 import io.github.girisenji.ai.discovery.GraphQLDiscoveryService;
 import io.github.girisenji.ai.discovery.OpenApiDiscoveryService;
@@ -93,6 +94,18 @@ public class AutoMcpServerAutoConfiguration {
 
         log.info("Configuring GraphQL discovery service");
         return new GraphQLDiscoveryService(properties, objectMapper, graphQLSchema.get());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "auto-mcp-server.discovery", name = "custom-tools-enabled", havingValue = "true", matchIfMissing = true)
+    public CustomToolDiscoveryService customToolDiscoveryService(
+            ApplicationContext applicationContext,
+            McpToolExecutor toolExecutor,
+            AutoMcpServerProperties properties) {
+
+        log.info("Configuring custom tool discovery service");
+        return new CustomToolDiscoveryService(applicationContext, toolExecutor, properties);
     }
 
     @Bean

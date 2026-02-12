@@ -19,6 +19,11 @@
 #   - Group related tools together
 
 approvedTools:
+  # Custom Tools - Direct Java execution (McpTool implementations)
+  - greet # Generate personalized greetings
+  - calculate # Perform basic math calculations
+  - search_users # Search users by name
+
   # User read operations - safe for AI agents
   - get_api_users # List all users
   - get_api_users_id # Get single user by ID

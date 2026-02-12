@@ -3,7 +3,9 @@ package io.github.girisenji.ai.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.mcp.McpProtocol;
+import io.github.girisenji.ai.model.McpTool;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
+import io.github.girisenji.ai.model.ToolResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
@@ -16,8 +18,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Service for executing MCP tool calls by invoking the actual API endpoints.
- * Stores execution metadata and performs HTTP requests to discovered endpoints.
+ * Service for executing MCP tool calls.
+ * Supports two execution modes:
+ * 1. Custom tools: Direct Java execution via McpTool interface
+ * 2. HTTP tools: HTTP requests to discovered REST/GraphQL endpoints
  */
 public class McpToolExecutor {
 
@@ -28,6 +32,7 @@ public class McpToolExecutor {
     private final RestTemplate restTemplate;
     private final String baseUrl;
     private final Map<String, ToolExecutionMetadata> executionMetadata;
+    private final Map<String, McpTool> customTools;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
@@ -38,23 +43,40 @@ public class McpToolExecutor {
         this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl;
         this.executionMetadata = new ConcurrentHashMap<>();
+        this.customTools = new ConcurrentHashMap<>();
     }
 
     /**
-     * Register execution metadata for a tool.
+     * Register execution metadata for an HTTP-based tool.
      */
     public void registerToolMetadata(String toolName, ToolExecutionMetadata metadata) {
         executionMetadata.put(toolName, metadata);
-        log.debug("Registered execution metadata for tool: {}", toolName);
+        log.debug("Registered HTTP execution metadata for tool: {}", toolName);
+    }
+
+    /**
+     * Register a custom McpTool for direct Java execution.
+     */
+    public void registerCustomTool(String toolName, McpTool tool) {
+        customTools.put(toolName, tool);
+        log.debug("Registered custom tool for direct execution: {}", toolName);
     }
 
     /**
      * Execute a tool call with the given arguments.
+     * Checks for custom tools first, then falls back to HTTP execution.
      */
     public McpProtocol.CallToolResult executeTool(String toolName, Map<String, Object> arguments) {
         try {
             log.info("Executing tool: {} with arguments: {}", toolName, arguments);
 
+            // Check for custom tool first
+            McpTool customTool = customTools.get(toolName);
+            if (customTool != null) {
+                return executeCustomTool(customTool, arguments);
+            }
+
+            // Fall back to HTTP execution
             ToolExecutionMetadata metadata = executionMetadata.get(toolName);
             if (metadata == null) {
                 log.warn("No execution metadata found for tool: {}", toolName);
@@ -74,6 +96,35 @@ public class McpToolExecutor {
             log.error("Failed to execute tool: {}", toolName, e);
             return new McpProtocol.CallToolResult(
                     List.of(McpProtocol.Content.text("Error: " + e.getMessage())),
+                    true);
+        }
+    }
+
+    /**
+     * Execute a custom McpTool using direct Java invocation.
+     */
+    private McpProtocol.CallToolResult executeCustomTool(McpTool tool, Map<String, Object> arguments) {
+        log.debug("Executing custom tool: {}", tool.getName());
+
+        try {
+            ToolResult result = tool.execute(arguments);
+
+            // Convert ToolResult to McpProtocol.CallToolResult
+            List<McpProtocol.Content> content = new ArrayList<>();
+
+            for (ToolResult.ToolContent toolContent : result.content()) {
+                switch (toolContent.type()) {
+                    case TEXT -> content.add(McpProtocol.Content.text(toolContent.text()));
+                    case DATA -> content.add(McpProtocol.Content.data(toolContent.data()));
+                }
+            }
+
+            return new McpProtocol.CallToolResult(content, result.isError());
+
+        } catch (Exception e) {
+            log.error("Custom tool execution failed: {}", tool.getName(), e);
+            return new McpProtocol.CallToolResult(
+                    List.of(McpProtocol.Content.text("Tool execution error: " + e.getMessage())),
                     true);
         }
     }
