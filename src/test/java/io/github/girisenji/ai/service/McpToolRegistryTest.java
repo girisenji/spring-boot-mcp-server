@@ -54,7 +54,8 @@ class McpToolRegistryTest {
                 new AutoMcpServerProperties.Discovery(),
                 toolsConfig,
                 new AutoMcpServerProperties.Performance(),
-                new AutoMcpServerProperties.RateLimiting());
+                new AutoMcpServerProperties.RateLimiting(),
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
 
         toolRegistry = new McpToolRegistry(List.of(discoveryService), toolConfigService, properties);
     }
@@ -215,6 +216,7 @@ class McpToolRegistryTest {
             AutoMcpServerProperties.Discovery discovery = new AutoMcpServerProperties.Discovery();
             AutoMcpServerProperties.Performance performance = new AutoMcpServerProperties.Performance();
             AutoMcpServerProperties.RateLimiting rateLimiting = new AutoMcpServerProperties.RateLimiting();
+            AutoMcpServerProperties.Execution execution = new AutoMcpServerProperties.Execution("PT30S", "PT5S");
 
             return new AutoMcpServerProperties(
                     true, // enabled
@@ -223,7 +225,8 @@ class McpToolRegistryTest {
                     discovery,
                     tools,
                     performance,
-                    rateLimiting);
+                    rateLimiting,
+                    execution);
         }
 
         private static org.springframework.core.io.ResourceLoader createMockResourceLoader() {

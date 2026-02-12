@@ -139,13 +139,19 @@ public class AutoMcpServerAutoConfiguration {
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
             AutoMcpServerProperties properties,
-            RateLimitService rateLimitService) {
+            RateLimitService rateLimitService,
+            ToolConfigurationService toolConfigurationService) {
 
         String baseUrl = properties.baseUrl();
         boolean rateLimitingEnabled = properties.rateLimiting().enabled();
-        log.info("Configuring MCP tool executor with base URL: {} (rate limiting: {})", baseUrl,
-                rateLimitingEnabled ? "enabled" : "disabled");
-        return new McpToolExecutor(applicationContext, objectMapper, baseUrl, rateLimitService, rateLimitingEnabled);
+        log.info(
+                "Configuring MCP tool executor with base URL: {} (rate limiting: {}, default timeout: {}, connect timeout: {})",
+                baseUrl,
+                rateLimitingEnabled ? "enabled" : "disabled",
+                properties.execution().defaultTimeout(),
+                properties.execution().defaultConnectTimeout());
+        return new McpToolExecutor(applicationContext, objectMapper, baseUrl, rateLimitService,
+                rateLimitingEnabled, toolConfigurationService, properties);
     }
 
     @Bean

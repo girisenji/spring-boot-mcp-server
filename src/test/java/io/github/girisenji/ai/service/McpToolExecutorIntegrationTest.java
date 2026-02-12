@@ -1,11 +1,13 @@
 package io.github.girisenji.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.girisenji.ai.config.AutoMcpServerProperties;
 import io.github.girisenji.ai.model.RateLimitConfig;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.context.request.RequestContextHolder;
 
@@ -23,6 +25,8 @@ class McpToolExecutorIntegrationTest {
     private ObjectMapper objectMapper;
     private ApplicationContext applicationContext;
     private RateLimitService rateLimitService;
+    private ToolConfigurationService toolConfigurationService;
+    private AutoMcpServerProperties properties;
     private McpToolExecutor executor;
 
     @BeforeEach
@@ -30,6 +34,41 @@ class McpToolExecutorIntegrationTest {
         objectMapper = new ObjectMapper();
         applicationContext = mock(ApplicationContext.class);
         rateLimitService = new RateLimitService(100);
+
+        // Create real ToolConfigurationService with null config file (empty approved
+        // tools)
+        AutoMcpServerProperties.Tools toolsConfig = new AutoMcpServerProperties.Tools(
+                new String[] { "/**" },
+                new String[] { "/actuator/**" },
+                100,
+                true,
+                null, // null config file - no approved tools needed for these tests
+                AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS,
+                false);
+
+        AutoMcpServerProperties testProperties = new AutoMcpServerProperties(
+                true,
+                "/mcp",
+                "http://localhost:8080",
+                new AutoMcpServerProperties.Discovery(),
+                toolsConfig,
+                new AutoMcpServerProperties.Performance(),
+                new AutoMcpServerProperties.RateLimiting(true, 100),
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
+
+        ResourceLoader resourceLoader = mock(ResourceLoader.class);
+        toolConfigurationService = new ToolConfigurationService(testProperties, resourceLoader, rateLimitService);
+
+        // Mock properties with default timeouts
+        properties = new AutoMcpServerProperties(
+                true, // enabled
+                "/mcp", // endpoint
+                "http://localhost:8080", // baseUrl
+                new AutoMcpServerProperties.Discovery(),
+                new AutoMcpServerProperties.Tools(),
+                new AutoMcpServerProperties.Performance(),
+                new AutoMcpServerProperties.RateLimiting(true, 100),
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
 
         // Clear any request context from previous tests
         RequestContextHolder.resetRequestAttributes();
@@ -43,7 +82,9 @@ class McpToolExecutorIntegrationTest {
                 objectMapper,
                 "http://localhost:8080",
                 rateLimitService,
-                true); // rate limiting enabled
+                true, // rate limiting enabled
+                toolConfigurationService,
+                properties);
 
         // Register a rate limit for test tool
         RateLimitConfig config = new RateLimitConfig(2, Duration.ofMinutes(1));
@@ -79,7 +120,9 @@ class McpToolExecutorIntegrationTest {
                 objectMapper,
                 "http://localhost:8080",
                 rateLimitService,
-                false); // rate limiting disabled
+                false, // rate limiting disabled
+                toolConfigurationService,
+                properties);
 
         // Register a strict rate limit
         RateLimitConfig config = new RateLimitConfig(1, Duration.ofMinutes(1));
@@ -115,7 +158,9 @@ class McpToolExecutorIntegrationTest {
                 objectMapper,
                 "http://localhost:8080",
                 rateLimitService,
-                true);
+                true,
+                toolConfigurationService,
+                properties);
 
         RateLimitConfig config = new RateLimitConfig(5, Duration.ofHours(1));
         rateLimitService.registerRateLimit("testTool", config);
@@ -150,7 +195,9 @@ class McpToolExecutorIntegrationTest {
                 objectMapper,
                 "http://localhost:8080",
                 new RateLimitService(2), // default: 2 requests/hour
-                true);
+                true,
+                toolConfigurationService,
+                properties);
 
         ToolExecutionMetadata metadata = new ToolExecutionMetadata(
                 "/api/test",
@@ -177,7 +224,9 @@ class McpToolExecutorIntegrationTest {
                 objectMapper,
                 "http://localhost:8080",
                 rateLimitService,
-                true);
+                true,
+                toolConfigurationService,
+                properties);
 
         // When - Execute tool without registering metadata
         var result = executor.executeTool("unknownTool", Map.of());

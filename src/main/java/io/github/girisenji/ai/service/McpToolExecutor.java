@@ -2,15 +2,19 @@ package io.github.girisenji.ai.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.girisenji.ai.config.AutoMcpServerProperties;
 import io.github.girisenji.ai.mcp.McpProtocol;
+import io.github.girisenji.ai.model.ExecutionTimeout;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -23,7 +27,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Executes calls to discovered REST/GraphQL endpoints.
  * 
  * <p>
- * Enforces rate limiting per tool and client IP address.
+ * Enforces rate limiting per tool and client IP address, and configures
+ * execution
+ * timeouts per tool or global defaults.
  */
 public class McpToolExecutor {
 
@@ -34,25 +40,33 @@ public class McpToolExecutor {
 
     private final ApplicationContext applicationContext;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate;
+    private final RestTemplate defaultRestTemplate;
     private final String baseUrl;
     private final Map<String, ToolExecutionMetadata> executionMetadata;
     private final RateLimitService rateLimitService;
     private final boolean rateLimitingEnabled;
+    private final ToolConfigurationService toolConfigurationService;
+    private final ExecutionTimeout defaultTimeout;
+    private final ExecutionTimeout defaultConnectTimeout;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
             String baseUrl,
             RateLimitService rateLimitService,
-            boolean rateLimitingEnabled) {
+            boolean rateLimitingEnabled,
+            ToolConfigurationService toolConfigurationService,
+            AutoMcpServerProperties properties) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
-        this.restTemplate = new RestTemplate();
+        this.defaultRestTemplate = new RestTemplate();
         this.baseUrl = baseUrl;
         this.executionMetadata = new ConcurrentHashMap<>();
         this.rateLimitService = rateLimitService;
         this.rateLimitingEnabled = rateLimitingEnabled;
+        this.toolConfigurationService = toolConfigurationService;
+        this.defaultTimeout = ExecutionTimeout.parse(properties.execution().defaultTimeout());
+        this.defaultConnectTimeout = ExecutionTimeout.parse(properties.execution().defaultConnectTimeout());
     }
 
     /**
@@ -66,6 +80,7 @@ public class McpToolExecutor {
     /**
      * Execute a tool call with the given arguments via HTTP request.
      * Enforces rate limiting per tool and client IP.
+     * Configures execution timeout per tool or uses global default.
      */
     public McpProtocol.CallToolResult executeTool(String toolName, Map<String, Object> arguments) {
         try {
@@ -98,12 +113,29 @@ public class McpToolExecutor {
                         true);
             }
 
-            // Execute the HTTP request
-            ResponseEntity<String> response = executeHttpRequest(metadata, arguments);
+            // Get timeout configuration for this tool
+            ExecutionTimeout timeout = toolConfigurationService.getTimeoutConfig(toolName)
+                    .orElse(defaultTimeout);
+            ExecutionTimeout connectTimeout = defaultConnectTimeout;
+
+            // Execute the HTTP request with timeout
+            ResponseEntity<String> response = executeHttpRequest(metadata, arguments, timeout, connectTimeout);
 
             // Convert response to tool result
             return convertResponseToToolResult(response);
 
+        } catch (ResourceAccessException e) {
+            // Handle timeout exceptions
+            log.error("Timeout executing tool: {}", toolName, e);
+            ExecutionTimeout timeout = toolConfigurationService.getTimeoutConfig(toolName)
+                    .orElse(defaultTimeout);
+            String errorMessage = String.format(
+                    "Request timeout for tool '%s'. Timeout limit: %s. The operation took too long to complete.",
+                    toolName,
+                    timeout.timeout());
+            return new McpProtocol.CallToolResult(
+                    List.of(McpProtocol.Content.text(errorMessage)),
+                    true);
         } catch (Exception e) {
             log.error("Failed to execute tool: {}", toolName, e);
             return new McpProtocol.CallToolResult(
@@ -163,18 +195,34 @@ public class McpToolExecutor {
     }
 
     /**
-     * Execute an HTTP request to an endpoint.
+     * Execute an HTTP request to an endpoint with configured timeouts.
      */
     private ResponseEntity<String> executeHttpRequest(
             ToolExecutionMetadata metadata,
-            Map<String, Object> arguments) {
+            Map<String, Object> arguments,
+            ExecutionTimeout timeout,
+            ExecutionTimeout connectTimeout) {
 
         String url = buildUrl(metadata, arguments);
         HttpHeaders headers = buildHeaders(metadata, arguments);
         HttpEntity<?> entity = buildEntity(metadata, arguments, headers);
 
-        log.debug("Executing {} request to: {}", metadata.method(), url);
+        // Create RestTemplate with timeout configuration
+        RestTemplate restTemplate = createRestTemplateWithTimeout(timeout, connectTimeout);
+
+        log.debug("Executing {} request to: {} (timeout: {}, connect timeout: {})",
+                metadata.method(), url, timeout.timeout(), connectTimeout.timeout());
         return restTemplate.exchange(url, metadata.method(), entity, String.class);
+    }
+
+    /**
+     * Create a RestTemplate with specific read and connect timeout values.
+     */
+    private RestTemplate createRestTemplateWithTimeout(ExecutionTimeout timeout, ExecutionTimeout connectTimeout) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setReadTimeout(timeout.toMillis());
+        factory.setConnectTimeout(connectTimeout.toMillis());
+        return new RestTemplate(factory);
     }
 
     private String buildUrl(ToolExecutionMetadata metadata, Map<String, Object> arguments) {

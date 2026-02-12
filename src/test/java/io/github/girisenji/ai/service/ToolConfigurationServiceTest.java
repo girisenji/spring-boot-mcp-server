@@ -291,7 +291,8 @@ class ToolConfigurationServiceTest {
                 new AutoMcpServerProperties.Discovery(),
                 tools,
                 new AutoMcpServerProperties.Performance(),
-                new AutoMcpServerProperties.RateLimiting());
+                new AutoMcpServerProperties.RateLimiting(),
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
     }
 
     private AutoMcpServerProperties createPropertiesWithNullConfig() {
@@ -311,6 +312,7 @@ class ToolConfigurationServiceTest {
                 new AutoMcpServerProperties.Discovery(),
                 tools,
                 new AutoMcpServerProperties.Performance(),
-                new AutoMcpServerProperties.RateLimiting());
+                new AutoMcpServerProperties.RateLimiting(),
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
     }
 }

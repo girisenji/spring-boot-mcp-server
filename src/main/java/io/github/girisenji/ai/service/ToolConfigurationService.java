@@ -3,6 +3,7 @@ package io.github.girisenji.ai.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.github.girisenji.ai.config.AutoMcpServerProperties;
+import io.github.girisenji.ai.model.ExecutionTimeout;
 import io.github.girisenji.ai.model.RateLimitConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ public class ToolConfigurationService {
     private final ObjectMapper yamlMapper;
     private final Set<String> approvedTools;
     private final Map<String, RateLimitConfig> rateLimitConfigs;
+    private final Map<String, ExecutionTimeout> timeoutConfigs;
     private final RateLimitService rateLimitService;
 
     public ToolConfigurationService(
@@ -59,6 +61,7 @@ public class ToolConfigurationService {
         this.yamlMapper = new ObjectMapper(new YAMLFactory());
         this.approvedTools = ConcurrentHashMap.newKeySet();
         this.rateLimitConfigs = new ConcurrentHashMap<>();
+        this.timeoutConfigs = new ConcurrentHashMap<>();
 
         loadApprovedTools();
     }
@@ -85,6 +88,13 @@ public class ToolConfigurationService {
     }
 
     /**
+     * Get execution timeout configuration for a specific tool.
+     */
+    public Optional<ExecutionTimeout> getTimeoutConfig(String toolName) {
+        return Optional.ofNullable(timeoutConfigs.get(toolName));
+    }
+
+    /**
      * Get count of approved tools.
      */
     public int getApprovedCount() {
@@ -97,6 +107,7 @@ public class ToolConfigurationService {
     public void reloadApprovedTools() {
         approvedTools.clear();
         rateLimitConfigs.clear();
+        timeoutConfigs.clear();
         loadApprovedTools();
     }
 
@@ -125,6 +136,7 @@ public class ToolConfigurationService {
 
             // Process approved tools and their rate limit configurations
             int toolsWithRateLimits = 0;
+            int toolsWithTimeouts = 0;
             for (ToolConfig toolConfig : config.approvedTools()) {
                 String toolName = toolConfig.getName();
                 approvedTools.add(toolName);
@@ -137,10 +149,17 @@ public class ToolConfigurationService {
                     rateLimitService.registerRateLimit(toolName, rateLimitConfig);
                     toolsWithRateLimits++;
                 }
+
+                if (toolConfig.getTimeout() != null) {
+                    ExecutionTimeout timeoutConfig = ExecutionTimeout.parse(toolConfig.getTimeout());
+                    timeoutConfigs.put(toolName, timeoutConfig);
+                    toolsWithTimeouts++;
+                }
             }
 
-            log.info("Loaded {} approved tools from config file: {} ({} with custom rate limits)",
-                    approvedTools.size(), configFile, toolsWithRateLimits);
+            log.info(
+                    "Loaded {} approved tools from config file: {} ({} with custom rate limits, {} with custom timeouts)",
+                    approvedTools.size(), configFile, toolsWithRateLimits, toolsWithTimeouts);
 
         } catch (IOException e) {
             log.error("Failed to load approval config from: {}. No tools will be approved.", configFile, e);
@@ -164,7 +183,7 @@ public class ToolConfigurationService {
     /**
      * Individual tool configuration from YAML.
      * Supports both simple string format ("toolName") and object format with rate
-     * limits.
+     * limits and timeouts.
      *
      * <p>
      * <b>Simple format:</b> {@code - getUser}
@@ -173,6 +192,7 @@ public class ToolConfigurationService {
      * 
      * <pre>
      * - name: getUser
+     *   timeout: PT10S
      *   rateLimit:
      *     requests: 100
      *     window: PT1H
@@ -181,6 +201,7 @@ public class ToolConfigurationService {
     private static class ToolConfig {
         private String name;
         private RateLimitYaml rateLimit;
+        private String timeout;
 
         public ToolConfig() {
         }
@@ -203,6 +224,14 @@ public class ToolConfigurationService {
 
         public void setRateLimit(RateLimitYaml rateLimit) {
             this.rateLimit = rateLimit;
+        }
+
+        public String getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(String timeout) {
+            this.timeout = timeout;
         }
     }
 

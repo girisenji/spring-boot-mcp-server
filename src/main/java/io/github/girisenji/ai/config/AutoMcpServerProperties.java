@@ -19,7 +19,8 @@ public record AutoMcpServerProperties(
         @DefaultValue Discovery discovery,
         @DefaultValue Tools tools,
         @DefaultValue Performance performance,
-        @DefaultValue RateLimiting rateLimiting) {
+        @DefaultValue RateLimiting rateLimiting,
+        @DefaultValue Execution execution) {
 
     /**
      * Discovery configuration for different API types.
@@ -121,8 +122,42 @@ public record AutoMcpServerProperties(
         }
     }
 
+    /**
+     * Execution configuration for HTTP tool execution.
+     * 
+     * @param defaultTimeout        Default read timeout for HTTP requests (ISO-8601
+     *                              duration)
+     * @param defaultConnectTimeout Default connect timeout for HTTP requests
+     *                              (ISO-8601 duration)
+     */
+    public record Execution(
+            @DefaultValue("PT30S") String defaultTimeout,
+            @DefaultValue("PT5S") String defaultConnectTimeout) {
+        public Execution() {
+            this("PT30S", "PT5S");
+        }
+
+        /**
+         * Get default timeout as Duration.
+         * 
+         * @return parsed Duration from defaultTimeout
+         */
+        public java.time.Duration getDefaultTimeoutDuration() {
+            return java.time.Duration.parse(defaultTimeout);
+        }
+
+        /**
+         * Get default connect timeout as Duration.
+         * 
+         * @return parsed Duration from defaultConnectTimeout
+         */
+        public java.time.Duration getDefaultConnectTimeoutDuration() {
+            return java.time.Duration.parse(defaultConnectTimeout);
+        }
+    }
+
     public AutoMcpServerProperties() {
         this(true, "/mcp", "http://localhost:8080", new Discovery(), new Tools(), new Performance(),
-                new RateLimiting());
+                new RateLimiting(), new Execution());
     }
 }
