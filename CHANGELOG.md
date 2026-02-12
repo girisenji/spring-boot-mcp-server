@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Metrics & Monitoring Support** - Optional Micrometer integration for production observability
+  - Tool execution count metrics with success/failure status and error types
+  - Tool execution duration histograms for latency tracking
+  - Discovery refresh counter
+  - Active SSE connections gauge (real-time tracking)
+  - Rate limit exceeded counter per tool
+  - All metrics use `mcp.*` prefix following Prometheus naming conventions
+  - Automatic activation when `spring-boot-starter-actuator` is on classpath
+  - Null-safe implementation - library works perfectly without metrics
+  - Exposed via `/actuator/metrics` and `/actuator/prometheus` endpoints
+  - Tags for filtering: `tool`, `status`, `error` for detailed analysis
+- **MCP Resources Support** - Full implementation of MCP Resources protocol
+  - ResourceService for managing and serving resources
+  - `resources/list` endpoint for listing available resources
+  - `resources/read` endpoint for reading resource contents (text and blob)
+  - Default server configuration resource at `mcp://server/config`
+  - Resource registration API for custom resources
+  - Support for both text and Base64-encoded blob resources
+  - 10 comprehensive ResourceService tests
+- **MCP Prompts Support** - Full implementation of MCP Prompts protocol
+  - PromptService for managing and serving prompts
+  - `prompts/list` endpoint for listing available prompts
+  - `prompts/get` endpoint for retrieving prompts with arguments
+  - Default prompts: welcome, tool-usage-help
+  - Prompt arguments support (required/optional parameters)
+  - Prompt registration API for custom prompts
+  - 10 comprehensive PromptService tests
 - **Management REST API**: Configuration reload endpoint for zero-downtime updates
   - `POST /mcp/admin/tools/reload` - Reload approved-tools.yml without restart
   - Audit logging for reload operations with before/after counts

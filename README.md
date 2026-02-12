@@ -21,6 +21,9 @@ A Spring Boot starter library that **automatically discovers your REST and Graph
 - **Execution Timeouts**: Configurable HTTP request timeouts
 - **Request Size Limits**: Protection against memory exhaustion
 - **Audit Logging**: Structured logging for compliance and security (PLAIN/JSON formats)
+- **Metrics & Monitoring**: Optional Micrometer integration for Prometheus/Grafana observability
+- **MCP Resources**: Expose configuration and data as readable resources
+- **MCP Prompts**: Provide helpful guidance prompts for tool usage
 
 ## 📦 Installation
 
@@ -192,7 +195,56 @@ auto-mcp-server:
     log-tool-executions: true           # Log tool execution events
     log-approval-changes: true          # Log tool approval changes
     log-security-events: true           # Log rate limits, timeouts, size limits
+
+# Optional: Enable metrics (requires spring-boot-starter-actuator)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
 ```
+
+#### Enabling Metrics (Optional)
+
+To enable production-ready metrics, add Spring Boot Actuator:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<!-- Optional: For Prometheus format -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+Available metrics:
+- `mcp.tool.execution.count` - Tool execution counter (tags: `tool`, `status`, `error`)
+- `mcp.tool.execution.duration` - Tool execution latency histogram (tag: `tool`)
+- `mcp.discovery.refresh.count` - Discovery refresh counter
+- `mcp.sse.connections.active` - Active SSE connections gauge
+- `mcp.rate_limit.exceeded.count` - Rate limit violations (tag: `tool`)
+
+Access metrics:
+- JSON: `GET /actuator/metrics/mcp.tool.execution.count`
+- Prometheus: `GET /actuator/prometheus`
+
+Example Prometheus queries:
+```promql
+# Request rate by tool
+rate(mcp_tool_execution_count_total[5m])
+
+# Error rate
+rate(mcp_tool_execution_count_total{status="failure"}[5m])
+
+# P95 latency
+histogram_quantile(0.95, rate(mcp_tool_execution_duration_seconds_bucket[5m]))
+
 
 ### Advanced Tool Configuration
 
@@ -243,6 +295,80 @@ approvedTools:
 - `1GB` = 1 gigabyte
 - `512KB` = 512 kilobytes
 - `1048576` = bytes (no suffix)
+
+### MCP Resources & Prompts
+
+The server automatically exposes resources and prompts to help AI agents use your tools effectively.
+
+#### Built-in Resources
+
+- **Server Configuration** (`mcp://server/config`): Current server configuration and capabilities
+
+You can register custom resources programmatically:
+
+```java
+@Autowired
+ResourceService resourceService;
+
+// Register a text resource
+resourceService.registerResource(
+    "mcp://app/status",
+    "Application Status",
+    "Current application health and status",
+    "application/json",
+    () -> McpProtocol.ResourceContents.text(
+        "mcp://app/status",
+        "application/json",
+        "{\"status\":\"healthy\",\"uptime\":\"5h30m\"}")
+);
+
+// Register a blob resource (Base64-encoded)
+String base64Data = Base64.getEncoder().encodeToString(imageBytes);
+resourceService.registerResource(
+    "mcp://app/logo",
+    "Application Logo",
+    "Company logo image",
+    "image/png",
+    () -> McpProtocol.ResourceContents.blob(
+        "mcp://app/logo",
+        "image/png",
+        base64Data)
+);
+```
+
+#### Built-in Prompts
+
+- **welcome**: Introduction to the MCP server and its capabilities
+- **tool-usage-help**: Guidance on using MCP tools effectively
+
+You can register custom prompts programmatically:
+
+```java
+@Autowired
+PromptService promptService;
+
+promptService.registerPrompt(
+    "api-best-practices",
+    "Best practices for using this API",
+    List.of(
+        new McpProtocol.PromptArgument("operation", "Specific operation name", false)
+    ),
+    args -> {
+        String operation = (String) args.getOrDefault("operation", "any operation");
+        String message = String.format("""
+            Best practices for %s:
+            1. Always validate input parameters
+            2. Handle rate limits gracefully  
+            3. Check response status codes
+            """, operation);
+        
+        return new McpProtocol.GetPromptResult(
+            "API best practices guidance",
+            List.of(new McpProtocol.PromptMessage("user", McpProtocol.Content.text(message)))
+        );
+    }
+);
+```
 
 
 ## 🛡️ Tool Approval & Management

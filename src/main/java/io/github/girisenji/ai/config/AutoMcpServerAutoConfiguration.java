@@ -12,6 +12,8 @@ import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
 import io.github.girisenji.ai.service.MetricsService;
 import io.github.girisenji.ai.service.RateLimitService;
+import io.github.girisenji.ai.service.ResourceService;
+import io.github.girisenji.ai.service.PromptService;
 import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.github.girisenji.ai.util.JsonSchemaGenerator;
 import graphql.schema.GraphQLSchema;
@@ -207,19 +209,35 @@ public class AutoMcpServerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public ResourceService resourceService() {
+        log.info("Configuring resource service");
+        return new ResourceService();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public PromptService promptService() {
+        log.info("Configuring prompt service");
+        return new PromptService();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public McpController mcpController(
             McpToolRegistry toolRegistry,
             McpToolExecutor toolExecutor,
             ObjectMapper objectMapper,
             AutoMcpServerProperties properties,
-            Optional<MetricsService> metricsService) {
+            Optional<MetricsService> metricsService,
+            ResourceService resourceService,
+            PromptService promptService) {
 
         String mcpEndpoint = properties.endpoint();
-        log.info("Configuring MCP controller for endpoint: {} (metrics: {})",
+        log.info("Configuring MCP controller for endpoint: {} (metrics: {}, resources: enabled, prompts: enabled)",
                 mcpEndpoint,
                 metricsService.isPresent() ? "enabled" : "disabled");
         return new McpController(toolRegistry, toolExecutor, objectMapper, mcpEndpoint,
-                metricsService.orElse(null));
+                metricsService.orElse(null), resourceService, promptService);
     }
 
     /**

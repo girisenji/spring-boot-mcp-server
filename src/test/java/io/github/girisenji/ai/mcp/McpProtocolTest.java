@@ -111,7 +111,10 @@ class McpProtocolTest {
     void testInitializeResult() {
         McpProtocol.ServerInfo serverInfo = new McpProtocol.ServerInfo("TestServer", "1.0.0");
         McpProtocol.ToolsCapability toolsCapability = new McpProtocol.ToolsCapability();
-        McpProtocol.ServerCapabilities capabilities = new McpProtocol.ServerCapabilities(toolsCapability);
+        McpProtocol.ResourcesCapability resourcesCapability = new McpProtocol.ResourcesCapability(false, false);
+        McpProtocol.PromptsCapability promptsCapability = new McpProtocol.PromptsCapability(false);
+        McpProtocol.ServerCapabilities capabilities = new McpProtocol.ServerCapabilities(toolsCapability,
+                resourcesCapability, promptsCapability);
 
         McpProtocol.InitializeResult result = new McpProtocol.InitializeResult("2024-11-05", capabilities, serverInfo);
 
@@ -184,7 +187,12 @@ class McpProtocolTest {
     @Test
     void testServerCapabilities() {
         McpProtocol.ToolsCapability toolsCapability = new McpProtocol.ToolsCapability();
-        McpProtocol.ServerCapabilities capabilities = new McpProtocol.ServerCapabilities(toolsCapability);
+        McpProtocol.ResourcesCapability resourcesCapability = new McpProtocol.ResourcesCapability(false, false);
+        McpProtocol.PromptsCapability promptsCapability = new McpProtocol.PromptsCapability(false);
+        McpProtocol.ServerCapabilities capabilities = new McpProtocol.ServerCapabilities(toolsCapability,
+                resourcesCapability, promptsCapability);
         assertThat(capabilities.tools()).isNotNull();
+        assertThat(capabilities.resources()).isNotNull();
+        assertThat(capabilities.prompts()).isNotNull();
     }
 }

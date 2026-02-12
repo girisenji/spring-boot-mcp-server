@@ -125,7 +125,9 @@ public class McpProtocol {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ServerCapabilities(
-            ToolsCapability tools) {
+            ToolsCapability tools,
+            ResourcesCapability resources,
+            PromptsCapability prompts) {
     }
 
     /**
@@ -137,6 +139,125 @@ public class McpProtocol {
         public ToolsCapability() {
             this(true);
         }
+    }
+
+    /**
+     * Resources capability.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ResourcesCapability(
+            boolean subscribe,
+            boolean listChanged) {
+        public ResourcesCapability() {
+            this(false, true);
+        }
+    }
+
+    /**
+     * Prompts capability.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PromptsCapability(
+            boolean listChanged) {
+        public PromptsCapability() {
+            this(true);
+        }
+    }
+
+    /**
+     * Resource definition.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Resource(
+            String uri,
+            String name,
+            String description,
+            String mimeType) {
+    }
+
+    /**
+     * List resources result.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ListResourcesResult(
+            List<Resource> resources,
+            String nextCursor) {
+    }
+
+    /**
+     * Resource contents.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ResourceContents(
+            String uri,
+            String mimeType,
+            String text,
+            String blob) {
+        public static ResourceContents text(String uri, String mimeType, String text) {
+            return new ResourceContents(uri, mimeType, text, null);
+        }
+
+        public static ResourceContents blob(String uri, String mimeType, String blob) {
+            return new ResourceContents(uri, mimeType, null, blob);
+        }
+    }
+
+    /**
+     * Read resource result.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ReadResourceResult(
+            List<ResourceContents> contents) {
+    }
+
+    /**
+     * Prompt definition.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Prompt(
+            String name,
+            String description,
+            List<PromptArgument> arguments) {
+    }
+
+    /**
+     * Prompt argument.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PromptArgument(
+            String name,
+            String description,
+            boolean required) {
+        public PromptArgument(String name, String description) {
+            this(name, description, false);
+        }
+    }
+
+    /**
+     * List prompts result.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ListPromptsResult(
+            List<Prompt> prompts,
+            String nextCursor) {
+    }
+
+    /**
+     * Prompt message.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PromptMessage(
+            String role,
+            Content content) {
+    }
+
+    /**
+     * Get prompt result.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record GetPromptResult(
+            String description,
+            List<PromptMessage> messages) {
     }
 
     /**

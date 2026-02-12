@@ -6,6 +6,8 @@ import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
 import io.github.girisenji.ai.service.MetricsService;
+import io.github.girisenji.ai.service.ResourceService;
+import io.github.girisenji.ai.service.PromptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -34,18 +36,24 @@ public class McpController {
     private final ObjectMapper objectMapper;
     private final String mcpEndpoint;
     private final MetricsService metricsService;
+    private final ResourceService resourceService;
+    private final PromptService promptService;
 
     public McpController(
             McpToolRegistry toolRegistry,
             McpToolExecutor toolExecutor,
             ObjectMapper objectMapper,
             String mcpEndpoint,
-            MetricsService metricsService) {
+            MetricsService metricsService,
+            ResourceService resourceService,
+            PromptService promptService) {
         this.toolRegistry = toolRegistry;
         this.toolExecutor = toolExecutor;
         this.objectMapper = objectMapper;
         this.mcpEndpoint = mcpEndpoint;
         this.metricsService = metricsService;
+        this.resourceService = resourceService;
+        this.promptService = promptService;
     }
 
     /**
@@ -140,6 +148,10 @@ public class McpController {
             case "initialize" -> handleInitialize(params);
             case "tools/list" -> handleListTools(params);
             case "tools/call" -> handleCallTool(params);
+            case "resources/list" -> handleListResources(params);
+            case "resources/read" -> handleReadResource(params);
+            case "prompts/list" -> handleListPrompts(params);
+            case "prompts/get" -> handleGetPrompt(params);
             case "ping" -> Map.of("status", "pong");
             default -> throw new IllegalArgumentException("Unknown method: " + method);
         };
@@ -153,7 +165,9 @@ public class McpController {
                 "1.0.0");
 
         McpProtocol.ServerCapabilities capabilities = new McpProtocol.ServerCapabilities(
-                new McpProtocol.ToolsCapability());
+                new McpProtocol.ToolsCapability(),
+                new McpProtocol.ResourcesCapability(false, false),
+                new McpProtocol.PromptsCapability(false));
 
         return new McpProtocol.InitializeResult(
                 PROTOCOL_VERSION,
@@ -206,5 +220,65 @@ public class McpController {
         }
 
         return toolExecutor.executeTool(toolName, arguments);
+    }
+
+    private McpProtocol.ListResourcesResult handleListResources(Map<String, Object> params) {
+        log.info("Listing resources");
+        List<McpProtocol.Resource> resources = resourceService.listResources();
+        return new McpProtocol.ListResourcesResult(resources, null);
+    }
+
+    private McpProtocol.ReadResourceResult handleReadResource(Map<String, Object> params) {
+        if (params == null) {
+            throw new IllegalArgumentException("Missing parameters for resource read");
+        }
+
+        String uri = (String) params.get("uri");
+        if (uri == null) {
+            throw new IllegalArgumentException("Missing resource URI");
+        }
+
+        log.info("Reading resource: {}", uri);
+
+        try {
+            McpProtocol.ResourceContents contents = resourceService.readResource(uri);
+            return new McpProtocol.ReadResourceResult(List.of(contents));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to read resource: {}", uri, e);
+            throw new RuntimeException("Failed to read resource: " + e.getMessage(), e);
+        }
+    }
+
+    private McpProtocol.ListPromptsResult handleListPrompts(Map<String, Object> params) {
+        log.info("Listing prompts");
+        List<McpProtocol.Prompt> prompts = promptService.listPrompts();
+        return new McpProtocol.ListPromptsResult(prompts, null);
+    }
+
+    private McpProtocol.GetPromptResult handleGetPrompt(Map<String, Object> params) {
+        if (params == null) {
+            throw new IllegalArgumentException("Missing parameters for prompt get");
+        }
+
+        String name = (String) params.get("name");
+        if (name == null) {
+            throw new IllegalArgumentException("Missing prompt name");
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> arguments = (Map<String, Object>) params.get("arguments");
+
+        log.info("Getting prompt: {} with arguments: {}", name, arguments);
+
+        try {
+            return promptService.getPrompt(name, arguments);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to get prompt: {}", name, e);
+            throw new RuntimeException("Failed to get prompt: " + e.getMessage(), e);
+        }
     }
 }
