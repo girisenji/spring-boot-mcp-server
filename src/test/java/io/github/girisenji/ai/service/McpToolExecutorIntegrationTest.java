@@ -54,7 +54,7 @@ class McpToolExecutorIntegrationTest {
                 toolsConfig,
                 new AutoMcpServerProperties.Performance(),
                 new AutoMcpServerProperties.RateLimiting(true, 100),
-                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"));
 
         ResourceLoader resourceLoader = mock(ResourceLoader.class);
         toolConfigurationService = new ToolConfigurationService(testProperties, resourceLoader, rateLimitService);
@@ -68,7 +68,7 @@ class McpToolExecutorIntegrationTest {
                 new AutoMcpServerProperties.Tools(),
                 new AutoMcpServerProperties.Performance(),
                 new AutoMcpServerProperties.RateLimiting(true, 100),
-                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"));
 
         // Clear any request context from previous tests
         RequestContextHolder.resetRequestAttributes();

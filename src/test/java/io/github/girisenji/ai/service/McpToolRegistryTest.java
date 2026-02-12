@@ -55,7 +55,7 @@ class McpToolRegistryTest {
                 toolsConfig,
                 new AutoMcpServerProperties.Performance(),
                 new AutoMcpServerProperties.RateLimiting(),
-                new AutoMcpServerProperties.Execution("PT30S", "PT5S"));
+                new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB", "10MB"));
 
         toolRegistry = new McpToolRegistry(List.of(discoveryService), toolConfigService, properties);
     }
@@ -216,7 +216,8 @@ class McpToolRegistryTest {
             AutoMcpServerProperties.Discovery discovery = new AutoMcpServerProperties.Discovery();
             AutoMcpServerProperties.Performance performance = new AutoMcpServerProperties.Performance();
             AutoMcpServerProperties.RateLimiting rateLimiting = new AutoMcpServerProperties.RateLimiting();
-            AutoMcpServerProperties.Execution execution = new AutoMcpServerProperties.Execution("PT30S", "PT5S");
+            AutoMcpServerProperties.Execution execution = new AutoMcpServerProperties.Execution("PT30S", "PT5S", "10MB",
+                    "10MB");
 
             return new AutoMcpServerProperties(
                     true, // enabled

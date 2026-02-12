@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.github.girisenji.ai.config.AutoMcpServerProperties;
 import io.github.girisenji.ai.model.ExecutionTimeout;
 import io.github.girisenji.ai.model.RateLimitConfig;
+import io.github.girisenji.ai.model.SizeLimit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -49,6 +50,7 @@ public class ToolConfigurationService {
     private final Set<String> approvedTools;
     private final Map<String, RateLimitConfig> rateLimitConfigs;
     private final Map<String, ExecutionTimeout> timeoutConfigs;
+    private final Map<String, SizeLimit> sizeLimitConfigs;
     private final RateLimitService rateLimitService;
 
     public ToolConfigurationService(
@@ -61,6 +63,7 @@ public class ToolConfigurationService {
         this.yamlMapper = new ObjectMapper(new YAMLFactory());
         this.approvedTools = ConcurrentHashMap.newKeySet();
         this.rateLimitConfigs = new ConcurrentHashMap<>();
+        this.sizeLimitConfigs = new ConcurrentHashMap<>();
         this.timeoutConfigs = new ConcurrentHashMap<>();
 
         loadApprovedTools();
@@ -95,6 +98,13 @@ public class ToolConfigurationService {
     }
 
     /**
+     * Get size limit configuration for a specific tool.
+     */
+    public Optional<SizeLimit> getSizeLimitConfig(String toolName) {
+        return Optional.ofNullable(sizeLimitConfigs.get(toolName));
+    }
+
+    /**
      * Get count of approved tools.
      */
     public int getApprovedCount() {
@@ -108,6 +118,7 @@ public class ToolConfigurationService {
         approvedTools.clear();
         rateLimitConfigs.clear();
         timeoutConfigs.clear();
+        sizeLimitConfigs.clear();
         loadApprovedTools();
     }
 
@@ -137,6 +148,7 @@ public class ToolConfigurationService {
             // Process approved tools and their rate limit configurations
             int toolsWithRateLimits = 0;
             int toolsWithTimeouts = 0;
+            int toolsWithSizeLimits = 0;
             for (ToolConfig toolConfig : config.approvedTools()) {
                 String toolName = toolConfig.getName();
                 approvedTools.add(toolName);
@@ -155,11 +167,19 @@ public class ToolConfigurationService {
                     timeoutConfigs.put(toolName, timeoutConfig);
                     toolsWithTimeouts++;
                 }
+
+                if (toolConfig.getMaxRequestBodySize() != null || toolConfig.getMaxResponseBodySize() != null) {
+                    SizeLimit sizeLimitConfig = SizeLimit.parse(
+                            toolConfig.getMaxRequestBodySize(),
+                            toolConfig.getMaxResponseBodySize());
+                    sizeLimitConfigs.put(toolName, sizeLimitConfig);
+                    toolsWithSizeLimits++;
+                }
             }
 
             log.info(
-                    "Loaded {} approved tools from config file: {} ({} with custom rate limits, {} with custom timeouts)",
-                    approvedTools.size(), configFile, toolsWithRateLimits, toolsWithTimeouts);
+                    "Loaded {} approved tools from config file: {} ({} with custom rate limits, {} with custom timeouts, {} with custom size limits)",
+                    approvedTools.size(), configFile, toolsWithRateLimits, toolsWithTimeouts, toolsWithSizeLimits);
 
         } catch (IOException e) {
             log.error("Failed to load approval config from: {}. No tools will be approved.", configFile, e);
@@ -183,7 +203,7 @@ public class ToolConfigurationService {
     /**
      * Individual tool configuration from YAML.
      * Supports both simple string format ("toolName") and object format with rate
-     * limits and timeouts.
+     * limits, timeouts, and size limits.
      *
      * <p>
      * <b>Simple format:</b> {@code - getUser}
@@ -193,6 +213,8 @@ public class ToolConfigurationService {
      * <pre>
      * - name: getUser
      *   timeout: PT10S
+     *   maxRequestBodySize: 5MB
+     *   maxResponseBodySize: 10MB
      *   rateLimit:
      *     requests: 100
      *     window: PT1H
@@ -202,6 +224,8 @@ public class ToolConfigurationService {
         private String name;
         private RateLimitYaml rateLimit;
         private String timeout;
+        private String maxRequestBodySize;
+        private String maxResponseBodySize;
 
         public ToolConfig() {
         }
@@ -232,6 +256,22 @@ public class ToolConfigurationService {
 
         public void setTimeout(String timeout) {
             this.timeout = timeout;
+        }
+
+        public String getMaxRequestBodySize() {
+            return maxRequestBodySize;
+        }
+
+        public void setMaxRequestBodySize(String maxRequestBodySize) {
+            this.maxRequestBodySize = maxRequestBodySize;
+        }
+
+        public String getMaxResponseBodySize() {
+            return maxResponseBodySize;
+        }
+
+        public void setMaxResponseBodySize(String maxResponseBodySize) {
+            this.maxResponseBodySize = maxResponseBodySize;
         }
     }
 

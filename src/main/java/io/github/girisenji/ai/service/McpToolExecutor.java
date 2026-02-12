@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.config.AutoMcpServerProperties;
 import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.model.ExecutionTimeout;
+import io.github.girisenji.ai.model.SizeLimit;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ public class McpToolExecutor {
     private final ToolConfigurationService toolConfigurationService;
     private final ExecutionTimeout defaultTimeout;
     private final ExecutionTimeout defaultConnectTimeout;
+    private final SizeLimit defaultSizeLimit;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
@@ -66,6 +68,9 @@ public class McpToolExecutor {
         this.rateLimitingEnabled = rateLimitingEnabled;
         this.toolConfigurationService = toolConfigurationService;
         this.defaultTimeout = ExecutionTimeout.parse(properties.execution().defaultTimeout());
+        this.defaultSizeLimit = SizeLimit.parse(
+                properties.execution().maxRequestBodySize(),
+                properties.execution().maxResponseBodySize());
         this.defaultConnectTimeout = ExecutionTimeout.parse(properties.execution().defaultConnectTimeout());
     }
 
@@ -118,8 +123,18 @@ public class McpToolExecutor {
                     .orElse(defaultTimeout);
             ExecutionTimeout connectTimeout = defaultConnectTimeout;
 
+            // Get size limit configuration for this tool
+            SizeLimit sizeLimit = toolConfigurationService.getSizeLimitConfig(toolName)
+                    .orElse(defaultSizeLimit);
+
+            // Validate request body size
+            validateRequestBodySize(arguments, sizeLimit, toolName);
+
             // Execute the HTTP request with timeout
             ResponseEntity<String> response = executeHttpRequest(metadata, arguments, timeout, connectTimeout);
+
+            // Validate response body size
+            validateResponseBodySize(response, sizeLimit, toolName);
 
             // Convert response to tool result
             return convertResponseToToolResult(response);
@@ -343,5 +358,54 @@ public class McpToolExecutor {
                 response.getStatusCode().is5xxServerError();
 
         return new McpProtocol.CallToolResult(content, isError);
+    }
+
+    /**
+     * Validate request body size against configured limits.
+     */
+    private void validateRequestBodySize(Map<String, Object> arguments, SizeLimit sizeLimit, String toolName) {
+        if (arguments == null || arguments.isEmpty()) {
+            return;
+        }
+
+        try {
+            String json = objectMapper.writeValueAsString(arguments);
+            long requestSizeBytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+
+            if (requestSizeBytes > sizeLimit.maxRequestBodyBytes()) {
+                String errorMessage = String.format(
+                        "Request body size (%s) exceeds maximum allowed size (%s) for tool '%s'",
+                        sizeLimit.formatBytes(requestSizeBytes),
+                        sizeLimit.formatBytes(sizeLimit.maxRequestBodyBytes()),
+                        toolName);
+                throw new IllegalArgumentException(errorMessage);
+            }
+        } catch (Exception e) {
+            if (e instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e;
+            }
+            log.warn("Could not validate request body size for tool: {}", toolName, e);
+        }
+    }
+
+    /**
+     * Validate response body size against configured limits.
+     */
+    private void validateResponseBodySize(ResponseEntity<String> response, SizeLimit sizeLimit, String toolName) {
+        String body = response.getBody();
+        if (body == null || body.isEmpty()) {
+            return;
+        }
+
+        long responseSizeBytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+
+        if (responseSizeBytes > sizeLimit.maxResponseBodyBytes()) {
+            String errorMessage = String.format(
+                    "Response body size (%s) exceeds maximum allowed size (%s) for tool '%s'",
+                    sizeLimit.formatBytes(responseSizeBytes),
+                    sizeLimit.formatBytes(sizeLimit.maxResponseBodyBytes()),
+                    toolName);
+            throw new IllegalArgumentException(errorMessage);
+        }
     }
 }

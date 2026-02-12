@@ -129,12 +129,16 @@ public record AutoMcpServerProperties(
      *                              duration)
      * @param defaultConnectTimeout Default connect timeout for HTTP requests
      *                              (ISO-8601 duration)
+     * @param maxRequestBodySize    Maximum request body size (e.g., "10MB", "1GB")
+     * @param maxResponseBodySize   Maximum response body size (e.g., "10MB", "1GB")
      */
     public record Execution(
             @DefaultValue("PT30S") String defaultTimeout,
-            @DefaultValue("PT5S") String defaultConnectTimeout) {
+            @DefaultValue("PT5S") String defaultConnectTimeout,
+            @DefaultValue("10MB") String maxRequestBodySize,
+            @DefaultValue("10MB") String maxResponseBodySize) {
         public Execution() {
-            this("PT30S", "PT5S");
+            this("PT30S", "PT5S", "10MB", "10MB");
         }
 
         /**
