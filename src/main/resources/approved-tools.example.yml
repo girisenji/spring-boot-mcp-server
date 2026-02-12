@@ -33,16 +33,66 @@ approvedTools:
       requests: 60
       window: PT1M # 60 requests per minute
 
-  # Simple string format (backward compatible)
+  # With custom timeout for slow operations
+  - name: get_api_reports_generate
+    timeout: PT5M # 5 minutes for report generation
+    rateLimit:
+      requests: 5
+      window: PT1H
+
+  # With custom size limits for large data operations
+  - name: post_api_data_upload
+    maxRequestBodySize: 50MB # Allow 50MB upload
+    maxResponseBodySize: 10MB # Response up to 10MB
+    timeout: PT2M # 2 minute timeout
+    rateLimit:
+      requests: 10
+      window: PT1H
+
+  # Fast operation with short timeout
+  - name: get_api_quick_status
+    timeout: PT5S # Quick 5 second timeout
+
+  # Complex configuration example
+  - name: post_api_batch_process
+    timeout: PT10M # 10 minutes for batch processing
+    maxRequestBodySize: 100MB # Large batch data
+    maxResponseBodySize: 50MB # Large results
+    rateLimit:
+      requests: 3
+      window: PT1H # Limited batch operations
+
+  # Simple string format (backward compatible, uses all defaults)
   - get_api_products
   - get_api_orders
 # Configuration notes:
-# - Tools can be specified as simple strings (use default rate limit)
-# - Or as objects with 'name' and 'rateLimit' properties
-# - window uses ISO-8601 duration format:
-#   - PT1H  = 1 hour
-#   - PT1M  = 1 minute
-#   - PT30S = 30 seconds
-#   - PT15M = 15 minutes
-#   - P1D   = 1 day
-# - Rate limits are enforced per client IP address
+# - Tools can be specified as simple strings (use all defaults)
+# - Or as objects with custom configuration
+#
+# Available properties:
+#   name: Tool identifier (required for object format)
+#   rateLimit: Per-client IP request throttling
+#     requests: Maximum number of requests
+#     window: Time window (ISO-8601 duration)
+#   timeout: HTTP request timeout (ISO-8601 duration)
+#   maxRequestBodySize: Maximum request body size (e.g., 10MB, 1GB)
+#   maxResponseBodySize: Maximum response body size (e.g., 10MB, 1GB)
+#
+# ISO-8601 duration format examples:
+#   PT30S  = 30 seconds
+#   PT5M   = 5 minutes
+#   PT1H   = 1 hour
+#   PT2H30M = 2 hours 30 minutes
+#   P1D    = 1 day
+#
+# Size format examples:
+#   10MB   = 10 megabytes
+#   1GB    = 1 gigabyte
+#   512KB  = 512 kilobytes
+#   1048576 = bytes (no suffix)
+#
+# Defaults (if not specified):
+#   rateLimit: 100 requests per hour
+#   timeout: PT30S (30 seconds read), PT5S (5 seconds connect)
+#   maxRequestBodySize: 10MB
+#   maxResponseBodySize: 10MB

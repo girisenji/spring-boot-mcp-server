@@ -23,6 +23,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Manages tool allowed-list and rate limit configurations from YAML
   - Supports both simple tool format and object format with custom rate limits
   - Terminology updated: "approval" → "allowed-list" throughout codebase
+- **Execution Timeouts**: Configurable HTTP request timeouts to prevent indefinite hangs
+  - Default read timeout: PT30S (30 seconds), configurable via `auto-mcp-server.execution.default-timeout`
+  - Default connect timeout: PT5S (5 seconds), configurable via `auto-mcp-server.execution.default-connect-timeout`
+  - Per-tool timeout overrides via `approved-tools.yml` (ISO-8601 duration format)
+  - RestTemplate factory with timeout configuration
+  - Graceful timeout handling with clear error messages (shows configured timeout)
+  - Separate read and connect timeout configuration
+- **Request Size Limits**: Protection against memory exhaustion from large payloads
+  - Default request body limit: 10MB, configurable via `auto-mcp-server.execution.max-request-body-size`
+  - Default response body limit: 10MB, configurable via `auto-mcp-server.execution.max-response-body-size`
+  - Human-readable size format (10MB, 1GB, 512KB, bytes)
+  - Per-tool size limit overrides via `approved-tools.yml`
+  - Long type support (up to exabyte scale)
+  - User-friendly error messages showing actual vs allowed sizes
+  - Request validation before HTTP execution, response validation after
 
 ### Changed
 - **Service Naming**: `ToolApprovalService` → `ToolConfigurationService`
@@ -32,7 +47,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `rateLimitingEnabled` constructor parameter
   - Rate limiting check before HTTP execution
   - Human-readable duration formatting in error messages
-- **RateLimitConfig**: Enhanced validation with better error messages
+  - Timeout-aware RestTemplate creation per execution
+  - Request and response size validation
+- **AutoMcpServerProperties**: Added `Execution
+- **ExecutionTimeout**: New model for timeout configuration
+  - Validates ISO-8601 duration format
+  - Converts to milliseconds for HTTP client configuration
+  - Validates positive, non-zero durations
+- **SizeLimit**: New model for request/response size limits
+  - Parses human-readable sizes (10MB, 1GB, 512KB)
+  - Case-insensitive, handles whitespace
+  - Null-s56 new tests** for security and reliability features
+  - **Rate Limiting** (15 tests):
+    - 8 tests in `RateLimitServiceTest` (enforcement, per-client/per-tool tracking, status, reset, defaults)
+    - 5 tests in `McpToolExecutorIntegrationTest` (enabled/disabled enforcement, error messages)
+    - 2 tests in `ToolConfigurationServiceTest` (YAML loading, reload)
+  - **Execution Timeouts** (15 tests):
+    - 15 tests in `ExecutionTimeoutTest` (ISO-8601 parsing, validation, millisecond conversion)
+    - Coverage: valid/invalid formats, short/long/complex durations, null/blank/negative/zero rejection
+  - **Request Size Limits** (26 tests):
+    - 26 tests in `SizeLimitTest` (size parsing, validation, formatting)
+    - Coverage: MB/GB/KB/bytes parsing, case-insensitivity, whitespace, null defaults, byte formatting
+- **Total: 102 tests, 0 failures** ✅
+- **Code coverage**: Comprehensive test coverage for all new security and reliability
   - Parse method validates ISO-8601 duration format
   - Clear exceptions for invalid window formats
 

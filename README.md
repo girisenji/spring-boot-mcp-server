@@ -17,6 +17,9 @@ A Spring Boot starter library that **automatically discovers your REST and Graph
 - **Admin UI**: Web interface for discovering and managing tools
 - **Runtime Reload**: Reload approved tools without restart
 - **Auto-Configuration**: Add dependency and get MCP server out-of-the-box
+- **Rate Limiting**: Per-tool and per-client IP request throttling
+- **Execution Timeouts**: Configurable HTTP request timeouts
+- **Request Size Limits**: Protection against memory exhaustion
 
 ## 📦 Installation
 
@@ -168,7 +171,70 @@ auto-mcp-server:
     # Tool naming
     max-tool-name-length: 100
     use-operation-id-as-tool-name: true
+  
+  # Rate limiting (optional)
+  rate-limiting:
+    enabled: true
+    default-requests-per-hour: 100
+  
+  # Execution configuration (optional)
+  execution:
+    default-timeout: PT30S              # 30 seconds read timeout
+    default-connect-timeout: PT5S       # 5 seconds connect timeout
+    max-request-body-size: 10MB         # Maximum request body size
+    max-response-body-size: 10MB        # Maximum response body size
 ```
+
+### Advanced Tool Configuration
+
+Configure per-tool overrides in `approved-tools.yml` for rate limits, timeouts, and size limits:
+
+```yaml
+approvedTools:
+  # Simple format (uses all defaults)
+  - simpleToolName
+  
+  # With custom rate limit
+  - name: frequentOperation
+    rateLimit:
+      requests: 1000
+      window: PT1H                      # ISO-8601 duration: 1 hour
+  
+  # With custom timeout
+  - name: longRunningTask
+    timeout: PT5M                       # 5 minutes for slow operations
+    rateLimit:
+      requests: 10
+      window: PT1H
+  
+  # With custom size limits
+  - name: largeDataUpload
+    maxRequestBodySize: 50MB            # Allow larger request
+    maxResponseBodySize: 100MB          # Allow larger response
+    timeout: PT2M
+  
+  # Full configuration example
+  - name: complexOperation
+    timeout: PT1M
+    maxRequestBodySize: 25MB
+    maxResponseBodySize: 50MB
+    rateLimit:
+      requests: 50
+      window: PT30M
+```
+
+**ISO-8601 Duration Format:**
+- `PT30S` = 30 seconds
+- `PT5M` = 5 minutes
+- `PT1H` = 1 hour
+- `PT2H30M` = 2 hours 30 minutes
+
+**Size Format:**
+- `10MB` = 10 megabytes
+- `1GB` = 1 gigabyte
+- `512KB` = 512 kilobytes
+- `1048576` = bytes (no suffix)
+
 
 ## 🛡️ Tool Approval & Management
 
@@ -365,10 +431,11 @@ curl -X POST http://localhost:8080/mcp/admin/tools/reload
 - [x] Tool discovery and registry
 - [x] Admin UI
 - [x] Runtime configuration reload
+- [x] Rate limiting and execution timeouts
 - [ ] WebSocket transport support
 - [ ] Resource and Prompt support
 - [ ] Enhanced metrics and monitoring
-- [ ] Rate limiting and quotas
+- [ ] Audit logging
 - [ ] Multi-tenant support
 
 ## 📚 Learn More
