@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
+import io.github.girisenji.ai.service.MetricsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -32,16 +33,19 @@ public class McpController {
     private final McpToolExecutor toolExecutor;
     private final ObjectMapper objectMapper;
     private final String mcpEndpoint;
+    private final MetricsService metricsService;
 
     public McpController(
             McpToolRegistry toolRegistry,
             McpToolExecutor toolExecutor,
             ObjectMapper objectMapper,
-            String mcpEndpoint) {
+            String mcpEndpoint,
+            MetricsService metricsService) {
         this.toolRegistry = toolRegistry;
         this.toolExecutor = toolExecutor;
         this.objectMapper = objectMapper;
         this.mcpEndpoint = mcpEndpoint;
+        this.metricsService = metricsService;
     }
 
     /**
@@ -51,6 +55,11 @@ public class McpController {
     public Flux<ServerSentEvent<String>> handleMcpSession(@RequestBody(required = false) String initialMessage) {
         log.info("New MCP session started");
 
+        // Track SSE connection metrics
+        if (metricsService != null) {
+            metricsService.incrementSseConnections();
+        }
+
         Sinks.Many<ServerSentEvent<String>> sink = Sinks.many().multicast().onBackpressureBuffer();
 
         return sink.asFlux()
@@ -59,9 +68,27 @@ public class McpController {
                     // Send endpoint message
                     sendEndpointMessage(sink);
                 })
-                .doOnCancel(() -> log.info("MCP session cancelled"))
-                .doOnComplete(() -> log.info("MCP session completed"))
-                .doOnError(error -> log.error("MCP session error", error));
+                .doOnCancel(() -> {
+                    log.info("MCP session cancelled");
+                    // Decrement SSE connection count
+                    if (metricsService != null) {
+                        metricsService.decrementSseConnections();
+                    }
+                })
+                .doOnComplete(() -> {
+                    log.info("MCP session completed");
+                    // Decrement SSE connection count on completion
+                    if (metricsService != null) {
+                        metricsService.decrementSseConnections();
+                    }
+                })
+                .doOnError(error -> {
+                    log.error("MCP session error", error);
+                    // Decrement SSE connection count on error
+                    if (metricsService != null) {
+                        metricsService.decrementSseConnections();
+                    }
+                });
     }
 
     /**

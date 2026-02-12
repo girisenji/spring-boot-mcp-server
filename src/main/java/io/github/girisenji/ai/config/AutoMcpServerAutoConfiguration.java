@@ -10,10 +10,12 @@ import io.github.girisenji.ai.discovery.RestEndpointDiscoveryService;
 import io.github.girisenji.ai.service.AuditLogger;
 import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
+import io.github.girisenji.ai.service.MetricsService;
 import io.github.girisenji.ai.service.RateLimitService;
 import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.github.girisenji.ai.util.JsonSchemaGenerator;
 import graphql.schema.GraphQLSchema;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.swagger.v3.oas.models.OpenAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,6 +109,20 @@ public class AutoMcpServerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
+    public MetricsService metricsService(Optional<MeterRegistry> meterRegistry) {
+        if (meterRegistry.isEmpty()) {
+            log.debug("MeterRegistry not found, metrics collection will be disabled");
+            return null;
+        }
+
+        log.info("Configuring metrics service with MeterRegistry: {}",
+                meterRegistry.get().getClass().getSimpleName());
+        return new MetricsService(meterRegistry.get());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public AuditLogger auditLogger(
             AutoMcpServerProperties properties,
             ObjectMapper objectMapper) {
@@ -157,19 +173,22 @@ public class AutoMcpServerAutoConfiguration {
             AutoMcpServerProperties properties,
             RateLimitService rateLimitService,
             ToolConfigurationService toolConfigurationService,
-            AuditLogger auditLogger) {
+            AuditLogger auditLogger,
+            Optional<MetricsService> metricsService) {
 
         String baseUrl = properties.baseUrl();
         boolean rateLimitingEnabled = properties.rateLimiting().enabled();
         log.info(
-                "Configuring MCP tool executor with base URL: {} (rate limiting: {}, audit: {}, default timeout: {}, connect timeout: {})",
+                "Configuring MCP tool executor with base URL: {} (rate limiting: {}, audit: {}, metrics: {}, default timeout: {}, connect timeout: {})",
                 baseUrl,
                 rateLimitingEnabled ? "enabled" : "disabled",
                 properties.audit().enabled() ? "enabled" : "disabled",
+                metricsService.isPresent() ? "enabled" : "disabled",
                 properties.execution().defaultTimeout(),
                 properties.execution().defaultConnectTimeout());
         return new McpToolExecutor(applicationContext, objectMapper, baseUrl, rateLimitService,
-                rateLimitingEnabled, toolConfigurationService, properties, auditLogger);
+                rateLimitingEnabled, toolConfigurationService, properties, auditLogger,
+                metricsService.orElse(null));
     }
 
     @Bean
@@ -177,10 +196,30 @@ public class AutoMcpServerAutoConfiguration {
     public ToolManagementController toolManagementController(
             McpToolRegistry toolRegistry,
             ToolConfigurationService toolConfigService,
-            AuditLogger auditLogger) {
+            AuditLogger auditLogger,
+            Optional<MetricsService> metricsService) {
 
-        log.info("Configuring tool management controller");
-        return new ToolManagementController(toolRegistry, toolConfigService, auditLogger);
+        log.info("Configuring tool management controller (metrics: {})",
+                metricsService.isPresent() ? "enabled" : "disabled");
+        return new ToolManagementController(toolRegistry, toolConfigService, auditLogger,
+                metricsService.orElse(null));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public McpController mcpController(
+            McpToolRegistry toolRegistry,
+            McpToolExecutor toolExecutor,
+            ObjectMapper objectMapper,
+            AutoMcpServerProperties properties,
+            Optional<MetricsService> metricsService) {
+
+        String mcpEndpoint = properties.endpoint();
+        log.info("Configuring MCP controller for endpoint: {} (metrics: {})",
+                mcpEndpoint,
+                metricsService.isPresent() ? "enabled" : "disabled");
+        return new McpController(toolRegistry, toolExecutor, objectMapper, mcpEndpoint,
+                metricsService.orElse(null));
     }
 
     /**

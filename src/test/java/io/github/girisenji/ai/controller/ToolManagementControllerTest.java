@@ -44,7 +44,7 @@ class ToolManagementControllerTest {
         @BeforeEach
         void setUp() {
                 ToolManagementController controller = new ToolManagementController(
-                                toolRegistry, toolConfigService, auditLogger);
+                                toolRegistry, toolConfigService, auditLogger, null);
                 mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         }
 

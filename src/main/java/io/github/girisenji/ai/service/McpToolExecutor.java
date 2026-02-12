@@ -7,6 +7,7 @@ import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.model.ExecutionTimeout;
 import io.github.girisenji.ai.model.SizeLimit;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
+import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +54,7 @@ public class McpToolExecutor {
     private final AuditLogger auditLogger;
     private final boolean auditToolExecutions;
     private final boolean auditSecurityEvents;
+    private final MetricsService metricsService;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
@@ -62,7 +64,8 @@ public class McpToolExecutor {
             boolean rateLimitingEnabled,
             ToolConfigurationService toolConfigurationService,
             AutoMcpServerProperties properties,
-            AuditLogger auditLogger) {
+            AuditLogger auditLogger,
+            MetricsService metricsService) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
         this.defaultRestTemplate = new RestTemplate();
@@ -79,6 +82,7 @@ public class McpToolExecutor {
         this.auditLogger = auditLogger;
         this.auditToolExecutions = properties.audit().logToolExecutions();
         this.auditSecurityEvents = properties.audit().logSecurityEvents();
+        this.metricsService = metricsService;
     }
 
     /**
@@ -100,6 +104,12 @@ public class McpToolExecutor {
         boolean success = false;
         String errorMessage = null;
 
+        // Start metrics timer if metrics service is available
+        Timer.Sample metricsSample = null;
+        if (metricsService != null) {
+            metricsSample = metricsService.startTimer();
+        }
+
         try {
             log.info("Executing tool: {} with arguments: {}", toolName, arguments);
 
@@ -120,6 +130,12 @@ public class McpToolExecutor {
                             clientIP,
                             status.currentRequests(),
                             status.maxRequests());
+                }
+
+                // Record metrics for rate limit exceeded
+                if (metricsService != null && metricsSample != null) {
+                    metricsService.recordToolFailure(toolName, metricsSample, "RateLimitExceeded");
+                    metricsService.recordRateLimitExceeded(toolName);
                 }
 
                 return new McpProtocol.CallToolResult(
@@ -209,6 +225,11 @@ public class McpToolExecutor {
                         durationMs);
             }
 
+            // Record metrics for successful execution
+            if (metricsService != null && metricsSample != null) {
+                metricsService.recordToolSuccess(toolName, metricsSample);
+            }
+
             return result;
 
         } catch (ResourceAccessException e) {
@@ -220,6 +241,11 @@ public class McpToolExecutor {
                     "Request timeout for tool '%s'. Timeout limit: %s. The operation took too long to complete.",
                     toolName,
                     timeout.timeout());
+
+            // Record metrics for timeout
+            if (metricsService != null && metricsSample != null) {
+                metricsService.recordToolFailure(toolName, metricsSample, "Timeout");
+            }
 
             // Audit timeout event
             if (auditSecurityEvents) {
@@ -236,6 +262,12 @@ public class McpToolExecutor {
         } catch (Exception e) {
             log.error("Failed to execute tool: {}", toolName, e);
             errorMessage = "Error: " + e.getMessage();
+
+            // Record metrics for general error
+            if (metricsService != null && metricsSample != null) {
+                String errorType = e instanceof IllegalArgumentException ? "SizeLimitExceeded" : "HttpError";
+                metricsService.recordToolFailure(toolName, metricsSample, errorType);
+            }
 
             return new McpProtocol.CallToolResult(
                     List.of(McpProtocol.Content.text(errorMessage)),

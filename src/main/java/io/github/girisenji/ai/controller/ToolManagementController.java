@@ -3,6 +3,7 @@ package io.github.girisenji.ai.controller;
 import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.service.AuditLogger;
 import io.github.girisenji.ai.service.McpToolRegistry;
+import io.github.girisenji.ai.service.MetricsService;
 import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -47,14 +48,17 @@ public class ToolManagementController {
     private final McpToolRegistry toolRegistry;
     private final ToolConfigurationService toolConfigService;
     private final AuditLogger auditLogger;
+    private final MetricsService metricsService;
 
     public ToolManagementController(
             McpToolRegistry toolRegistry,
             ToolConfigurationService toolConfigService,
-            AuditLogger auditLogger) {
+            AuditLogger auditLogger,
+            MetricsService metricsService) {
         this.toolRegistry = toolRegistry;
         this.toolConfigService = toolConfigService;
         this.auditLogger = auditLogger;
+        this.metricsService = metricsService;
     }
 
     /**
@@ -158,6 +162,11 @@ public class ToolManagementController {
                 clientIP,
                 true,
                 "Tool discovery refresh triggered");
+
+        // Record metrics for discovery refresh
+        if (metricsService != null) {
+            metricsService.recordDiscoveryRefresh();
+        }
 
         toolRegistry.refreshTools();
         return Map.of(

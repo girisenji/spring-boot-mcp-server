@@ -90,7 +90,7 @@ class McpToolExecutorIntegrationTest {
                                 true, // rate limiting enabled
                                 toolConfigurationService,
                                 properties,
-                                auditLogger);
+                                auditLogger, null);
 
                 // Register a rate limit for test tool
                 RateLimitConfig config = new RateLimitConfig(2, Duration.ofMinutes(1));
@@ -129,7 +129,7 @@ class McpToolExecutorIntegrationTest {
                                 false, // rate limiting disabled
                                 toolConfigurationService,
                                 properties,
-                                auditLogger);
+                                auditLogger, null);
 
                 // Register a strict rate limit
                 RateLimitConfig config = new RateLimitConfig(1, Duration.ofMinutes(1));
@@ -168,7 +168,7 @@ class McpToolExecutorIntegrationTest {
                                 true,
                                 toolConfigurationService,
                                 properties,
-                                auditLogger);
+                                auditLogger, null);
 
                 RateLimitConfig config = new RateLimitConfig(5, Duration.ofHours(1));
                 rateLimitService.registerRateLimit("testTool", config);
@@ -206,7 +206,7 @@ class McpToolExecutorIntegrationTest {
                                 true,
                                 toolConfigurationService,
                                 properties,
-                                auditLogger);
+                                auditLogger, null);
 
                 ToolExecutionMetadata metadata = new ToolExecutionMetadata(
                                 "/api/test",
@@ -236,7 +236,7 @@ class McpToolExecutorIntegrationTest {
                                 true,
                                 toolConfigurationService,
                                 properties,
-                                auditLogger);
+                                auditLogger, null);
 
                 // When - Execute tool without registering metadata
                 var result = executor.executeTool("unknownTool", Map.of());
