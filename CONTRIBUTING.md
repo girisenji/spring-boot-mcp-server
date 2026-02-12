@@ -124,18 +124,19 @@ void testFeatureName_whenCondition_thenExpectedOutcome() {
 We welcome contributions in these areas:
 
 ### High Priority
-- [ ] Implement tool execution functionality
 - [ ] Add WebSocket transport support
-- [ ] Enhance security features
-- [ ] Add metrics and monitoring
-- [ ] Performance optimizations
+- [ ] Enhanced security features (authentication, authorization, rate limiting)
+- [ ] Add metrics and monitoring (Spring Boot Actuator integration)
+- [ ] Enhanced error handling and retry logic for HTTP tool execution
+- [ ] Tool execution timeout management
+- [ ] Performance optimizations (caching, connection pooling)
 
 ### Medium Priority
 - [ ] Support for MCP Resources
 - [ ] Support for MCP Prompts
-- [ ] Enhanced error handling
-- [ ] Rate limiting and throttling
-- [ ] Caching mechanisms
+- [ ] Rate limiting and throttling for MCP endpoints
+- [ ] Request/response validation
+- [ ] Audit logging for tool executions
 
 ### Documentation
 - [ ] More example applications

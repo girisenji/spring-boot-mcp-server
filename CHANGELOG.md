@@ -14,12 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of Spring Boot MCP Server
 - Auto-configuration for MCP server in Spring Boot 3.2+ applications
 - SSE (Server-Sent Events) transport implementation for MCP protocol
-- `McpTool` interface for creating custom tools
-- Tool discovery via Spring component scanning
+- **REST endpoint auto-discovery** via reflection and OpenAPI parsing
+- **GraphQL endpoint auto-discovery** via schema introspection
+- **OpenAPI integration** for generating tool schemas from Swagger specs
 - Config-driven tool approval system via `approved-tools.yml`
 - `ToolApprovalService` for managing approved tools
 - `McpToolRegistry` for tool registration and filtering
 - Admin UI at `/mcp/admin/tools` for tool management
+- **HTTP-based tool execution** - forwards tool calls to REST/GraphQL endpoints
 - REST API for tool management:
   - `GET /mcp/admin/tools/api/tools` - List tools with pagination
   - `POST /mcp/admin/tools/reload` - Reload approved tools

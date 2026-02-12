@@ -4,18 +4,19 @@
 [![Java](https://img.shields.io/badge/Java-21%2B-orange)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2%2B-green)](https://spring.io/projects/spring-boot)
 
-A Spring Boot starter library that enables your application to serve as an **MCP (Model Context Protocol) server**, allowing AI agents like Claude to interact with your custom tools.
+A Spring Boot starter library that **automatically discovers your REST and GraphQL endpoints** and exposes them as **MCP (Model Context Protocol) tools**, allowing AI agents like Claude to interact with your application's APIs securely.
 
 ## 🚀 Features
 
-- **Auto-Configuration**: Add dependency and get MCP server out-of-the-box
+- **Auto-Discovery**: Automatically discovers REST and GraphQL endpoints from your Spring application
+- **OpenAPI Integration**: Uses OpenAPI/Swagger specifications for tool schema generation
+- **GraphQL Support**: Discovers GraphQL queries and mutations as separate tools
 - **SSE Transport**: Implements MCP protocol over Server-Sent Events
-- **Config-Driven Security**: Tool approval via version-controlled YAML files
-- **Custom Tools**: Simple interface for creating tools
-- **Tool Discovery**: Automatic discovery of Spring beans implementing `McpTool`
-- **Admin UI**: Web interface for tool management and discovery
+- **Config-Driven Security**: Explicit tool approval via version-controlled YAML - deny by default
+- **HTTP Execution**: Executes tools by making HTTP requests to your actual endpoints
+- **Admin UI**: Web interface for discovering and managing tools
 - **Runtime Reload**: Reload approved tools without restart
-- **Zero Dependencies**: No external tools or agents required
+- **Auto-Configuration**: Add dependency and get MCP server out-of-the-box
 
 ## 📦 Installation
 
@@ -47,23 +48,25 @@ Add to your Spring Boot 3.2+ application:
 </dependency>
 ```
 
-### 2. Create a Tool
+### 2. Create REST Endpoints
 
-Implement the `McpTool` interface:
+Create standard Spring REST controllers:
 
 ```java
-@Component
-public class GreetingTool implements McpTool {
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
     
-    @Override
-    public String getName() {
-        return "greet";
+    @GetMapping
+    public List<User> getAllUsers() {
+        return userService.findAll();
     }
     
-    @Override
-    public String getDescription() {
-        return "Generate a greeting message";
+    @GetMapping("/{id}")
+    public User getUserById(@PathVariable Long id) {
+        return userService.findById(id);
     }
+}
     
     Application Properties (Optional)
 
@@ -243,18 +246,14 @@ GET /mcp/admin/tools/export/yaml
 
 ### Development Workflow
 
-1. **Develop Tools**: Create `@Component` classes implementing `McpTool`
-2. **Discover**: Visit admin UI to see discovered tools
-3. **Export**: Download YAML template with all tools
-4. **Approve**: Edit `approved-tools.yml` to approve needed tools
-5. **Reload**: POST to `/mcp/admin/tools/reload` or restart app
-```java
-@Autowired
-private McpToolRegistry toolRegistry;
-
-public void refreshTools() {
-    toolRegistry.refreshTools();
-}
+1. **Develop APIs**: Create REST controllers or GraphQL resolvers
+2. **Discover**: Visit admin UI at `/mcp/admin/tools` to see discovered endpoints
+3. **Export**: Download YAML template with all discovered tools
+4. **Approve**: Edit `approved-tools.yml` to approve safe tools for AI agents
+5. **Reload**: POST to `/mcp/admin/tools/reload` or restart application
+```bash
+# Reload approved tools without restart
+curl -X POST http://localhost:8080/mcp/admin/tools/reload
 ```
 
 ## 📖 How It Works
@@ -350,13 +349,14 @@ public class ReadFileTool implements McpTool {
 │              Spring Boot Application            │
 │  ┌───────────────────────────────────────────┐  │
 │  │         Auto-Configuration                │  │
-│  │  - Discovers @Component McpTool beans     │  │
+│  │  - Discovers REST endpoints               │  │
+│  │  - Discovers GraphQL endpoints            │  │
+│  │  - Parses OpenAPI specifications          │  │
 │  │  - Registers MCP endpoints                │  │
-│  │  - Configures tool registry               │  │
 │  └───────────────────────────────────────────┘  │
 │                                                 │
 │  ┌───────────────┐       ┌───────────────-───┐  │
-│  │  McpTool      │       │  Tool Approval    │  │
+│  │  Tool         │       │  Tool Approval    │  │
 │  │  Registry     │◄──────┤  Service          │  │
 │  │  - Discovery  │       │  - YAML config    │  │
 │  │  - Filtering  │       │  - Approval check │  │
@@ -367,7 +367,7 @@ public class ReadFileTool implements McpTool {
 │  │        MCP Controller (/mcp/sse)          │  │
 │  │  - SSE endpoint                           │  │
 │  │  - Protocol handling                      │  │
-│  │  - Tool execution                         │  │
+│  │  - HTTP tool execution                    │  │
 │  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘
                       │
@@ -383,9 +383,9 @@ public class ReadFileTool implements McpTool {
 
 ```
 ┌──────────────────┐
-│  Tool Created    │
-│  @Component      │
-│  McpTool         │
+│  Endpoint        │
+│  Discovered      │
+│  (REST/GraphQL)  │
 └────────┬─────────┘
          │
          ▼[LICENSE](LICENSE) file for details.
