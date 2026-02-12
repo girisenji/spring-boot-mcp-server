@@ -171,7 +171,13 @@ public class RateLimitService {
     }
 
     /**
-     * Rate limit status information.
+     * Rate limit status information for a specific tool and client.
+     *
+     * @param toolName        Name of the tool
+     * @param clientIP        IP address of the client
+     * @param currentRequests Current number of requests in the time window
+     * @param maxRequests     Maximum requests allowed in the time window
+     * @param window          Time window for the rate limit
      */
     public record RateLimitStatus(
             String toolName,
@@ -180,10 +186,20 @@ public class RateLimitService {
             int maxRequests,
             Duration window) {
 
+        /**
+         * Check if the rate limit has been exceeded.
+         *
+         * @return true if current requests exceed the maximum allowed
+         */
         public boolean isLimitExceeded() {
             return currentRequests > maxRequests;
         }
 
+        /**
+         * Calculate remaining requests before hitting the limit.
+         *
+         * @return number of requests remaining (0 if limit exceeded)
+         */
         public int remainingRequests() {
             return Math.max(0, maxRequests - currentRequests);
         }

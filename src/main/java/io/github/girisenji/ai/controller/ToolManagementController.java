@@ -146,12 +146,26 @@ public class ToolManagementController {
 
     // Response DTOs
 
+    /**
+     * Response containing discovery statistics and tool information.
+     *
+     * @param totalDiscovered Total number of tools discovered
+     * @param totalApproved   Total number of approved tools from configuration
+     * @param tools           List of tool information
+     */
     public record DiscoveryResponse(
             int totalDiscovered,
             int totalApproved,
             List<ToolInfo> tools) {
     }
 
+    /**
+     * Information about a single discovered tool.
+     *
+     * @param name        Tool name
+     * @param description Tool description
+     * @param approved    Whether this tool is in the allowed-list configuration
+     */
     public record ToolInfo(
             String name,
             String description,

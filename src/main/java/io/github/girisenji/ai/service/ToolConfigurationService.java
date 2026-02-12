@@ -148,7 +148,10 @@ public class ToolConfigurationService {
     }
 
     /**
-     * Configuration file format for approved tools.
+     * Root configuration object for the YAML file.
+     * Maps to the top-level structure of approved-tools.yml.
+     *
+     * @param approvedTools List of tool configurations
      */
     private record ApprovalConfig(List<ToolConfig> approvedTools) {
         public ApprovalConfig {
@@ -159,8 +162,21 @@ public class ToolConfigurationService {
     }
 
     /**
-     * Individual tool configuration.
-     * Supports both simple string format and object format with rate limits.
+     * Individual tool configuration from YAML.
+     * Supports both simple string format ("toolName") and object format with rate
+     * limits.
+     *
+     * <p>
+     * <b>Simple format:</b> {@code - getUser}
+     * <p>
+     * <b>Object format:</b>
+     * 
+     * <pre>
+     * - name: getUser
+     *   rateLimit:
+     *     requests: 100
+     *     window: PT1H
+     * </pre>
      */
     private static class ToolConfig {
         private String name;
@@ -192,6 +208,9 @@ public class ToolConfigurationService {
 
     /**
      * Rate limit configuration from YAML.
+     *
+     * @param requests Maximum number of requests allowed
+     * @param window   ISO-8601 duration string (e.g., "PT1H" for 1 hour)
      */
     private record RateLimitYaml(int requests, String window) {
     }

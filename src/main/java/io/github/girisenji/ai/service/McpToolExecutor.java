@@ -28,6 +28,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class McpToolExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(McpToolExecutor.class);
+    private static final String UNKNOWN_CLIENT_IP = "unknown";
+    private static final String HEADER_X_FORWARDED_FOR = "X-Forwarded-For";
+    private static final String HEADER_X_REAL_IP = "X-Real-IP";
 
     private final ApplicationContext applicationContext;
     private final ObjectMapper objectMapper;
@@ -35,18 +38,21 @@ public class McpToolExecutor {
     private final String baseUrl;
     private final Map<String, ToolExecutionMetadata> executionMetadata;
     private final RateLimitService rateLimitService;
+    private final boolean rateLimitingEnabled;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
             String baseUrl,
-            RateLimitService rateLimitService) {
+            RateLimitService rateLimitService,
+            boolean rateLimitingEnabled) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
         this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl;
         this.executionMetadata = new ConcurrentHashMap<>();
         this.rateLimitService = rateLimitService;
+        this.rateLimitingEnabled = rateLimitingEnabled;
     }
 
     /**
@@ -68,8 +74,8 @@ public class McpToolExecutor {
             // Get client IP for rate limiting
             String clientIP = getClientIP();
 
-            // Check rate limit
-            if (!rateLimitService.allowRequest(toolName, clientIP)) {
+            // Check rate limit (only if enabled)
+            if (rateLimitingEnabled && !rateLimitService.allowRequest(toolName, clientIP)) {
                 RateLimitService.RateLimitStatus status = rateLimitService.getStatus(toolName, clientIP);
                 String errorMessage = String.format(
                         "Rate limit exceeded for tool '%s'. Limit: %d requests per %s. Please try again later.",
@@ -118,13 +124,13 @@ public class McpToolExecutor {
                 HttpServletRequest request = attributes.getRequest();
 
                 // Check proxy headers
-                String ip = request.getHeader("X-Forwarded-For");
+                String ip = request.getHeader(HEADER_X_FORWARDED_FOR);
                 if (ip != null && !ip.isEmpty()) {
                     // X-Forwarded-For can contain multiple IPs, take the first one
                     return ip.split(",")[0].trim();
                 }
 
-                ip = request.getHeader("X-Real-IP");
+                ip = request.getHeader(HEADER_X_REAL_IP);
                 if (ip != null && !ip.isEmpty()) {
                     return ip;
                 }
@@ -133,10 +139,10 @@ public class McpToolExecutor {
                 return request.getRemoteAddr();
             }
         } catch (Exception e) {
-            log.debug("Could not determine client IP, using 'unknown'", e);
+            log.debug("Could not determine client IP, using '{}'", UNKNOWN_CLIENT_IP, e);
         }
 
-        return "unknown";
+        return UNKNOWN_CLIENT_IP;
     }
 
     /**

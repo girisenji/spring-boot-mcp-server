@@ -27,8 +27,21 @@ public record RateLimitConfig(
      * @param requests Number of requests allowed
      * @param window   ISO-8601 duration string (e.g., "PT1H" for 1 hour, "PT1M" for
      *                 1 minute)
+     * @return parsed RateLimitConfig
+     * @throws IllegalArgumentException if window format is invalid or requests is
+     *                                  non-positive
      */
     public static RateLimitConfig parse(int requests, String window) {
-        return new RateLimitConfig(requests, Duration.parse(window));
+        if (window == null || window.isBlank()) {
+            throw new IllegalArgumentException("Rate limit window must not be null or blank");
+        }
+        try {
+            return new RateLimitConfig(requests, Duration.parse(window));
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "Invalid ISO-8601 duration format for rate limit window: '" + window +
+                            "'. Examples: PT1H (1 hour), PT30M (30 minutes), PT1M (1 minute)",
+                    e);
+        }
     }
 }
