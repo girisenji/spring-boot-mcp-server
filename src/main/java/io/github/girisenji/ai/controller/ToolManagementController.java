@@ -2,7 +2,7 @@ package io.github.girisenji.ai.controller;
 
 import io.github.girisenji.ai.mcp.McpProtocol;
 import io.github.girisenji.ai.service.McpToolRegistry;
-import io.github.girisenji.ai.service.ToolApprovalService;
+import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
@@ -37,13 +37,13 @@ import java.util.stream.Collectors;
 public class ToolManagementController {
 
     private final McpToolRegistry toolRegistry;
-    private final ToolApprovalService approvalService;
+    private final ToolConfigurationService toolConfigService;
 
     public ToolManagementController(
             McpToolRegistry toolRegistry,
-            ToolApprovalService approvalService) {
+            ToolConfigurationService toolConfigService) {
         this.toolRegistry = toolRegistry;
-        this.approvalService = approvalService;
+        this.toolConfigService = toolConfigService;
     }
 
     /**
@@ -53,13 +53,13 @@ public class ToolManagementController {
     @Operation(summary = "Get discovery summary", description = "Summary statistics of tool discovery and approval")
     public Map<String, Object> getSummary() {
         List<McpProtocol.Tool> allTools = toolRegistry.getAllDiscoveredTools();
-        int approvedCount = approvalService.getApprovedCount();
+        int approvedCount = toolConfigService.getApprovedCount();
 
         return Map.of(
                 "totalDiscovered", allTools.size(),
                 "totalApproved", approvedCount,
                 "unapproved", allTools.size() - approvedCount,
-                "approvedTools", approvalService.getApprovedToolNames());
+                "approvedTools", toolConfigService.getApprovedToolNames());
     }
 
     /**
@@ -74,10 +74,10 @@ public class ToolManagementController {
                 .map(tool -> new ToolInfo(
                         tool.name(),
                         tool.description(),
-                        approvalService.isToolApproved(tool.name())))
+                        toolConfigService.isToolApproved(tool.name())))
                 .collect(Collectors.toList());
 
-        return new DiscoveryResponse(tools.size(), approvalService.getApprovedCount(), tools);
+        return new DiscoveryResponse(tools.size(), toolConfigService.getApprovedCount(), tools);
     }
 
     /**
@@ -108,7 +108,7 @@ public class ToolManagementController {
             yaml.append("  [] # No tools discovered\n");
         } else {
             for (McpProtocol.Tool tool : tools) {
-                boolean isApproved = approvalService.isToolApproved(tool.name());
+                boolean isApproved = toolConfigService.isToolApproved(tool.name());
 
                 if (approvedOnly && !isApproved) {
                     continue;
@@ -127,7 +127,7 @@ public class ToolManagementController {
         }
 
         yaml.append("\n# Total discovered: ").append(tools.size()).append("\n");
-        yaml.append("# Currently approved: ").append(approvalService.getApprovedCount()).append("\n");
+        yaml.append("# Currently approved: ").append(toolConfigService.getApprovedCount()).append("\n");
 
         return ResponseEntity.ok(yaml.toString());
     }

@@ -18,7 +18,8 @@ public record AutoMcpServerProperties(
         @DefaultValue("http://localhost:8080") String baseUrl,
         @DefaultValue Discovery discovery,
         @DefaultValue Tools tools,
-        @DefaultValue Performance performance) {
+        @DefaultValue Performance performance,
+        @DefaultValue RateLimiting rateLimiting) {
 
     /**
      * Discovery configuration for different API types.
@@ -105,7 +106,23 @@ public record AutoMcpServerProperties(
         }
     }
 
+    /**
+     * Rate limiting configuration.
+     * 
+     * @param enabled                Whether rate limiting is enabled
+     * @param defaultRequestsPerHour Default rate limit for tools without specific
+     *                               configuration
+     */
+    public record RateLimiting(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("100") int defaultRequestsPerHour) {
+        public RateLimiting() {
+            this(true, 100);
+        }
+    }
+
     public AutoMcpServerProperties() {
-        this(true, "/mcp", "http://localhost:8080", new Discovery(), new Tools(), new Performance());
+        this(true, "/mcp", "http://localhost:8080", new Discovery(), new Tools(), new Performance(),
+                new RateLimiting());
     }
 }

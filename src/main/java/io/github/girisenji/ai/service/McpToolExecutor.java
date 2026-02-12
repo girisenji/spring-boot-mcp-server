@@ -3,9 +3,8 @@ package io.github.girisenji.ai.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.mcp.McpProtocol;
-import io.github.girisenji.ai.model.McpTool;
 import io.github.girisenji.ai.model.ToolExecutionMetadata;
-import io.github.girisenji.ai.model.ToolResult;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
@@ -13,15 +12,18 @@ import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Service for executing MCP tool calls.
- * Supports two execution modes:
- * 1. Custom tools: Direct Java execution via McpTool interface
- * 2. HTTP tools: HTTP requests to discovered REST/GraphQL endpoints
+ * Service for executing MCP tool calls via HTTP requests.
+ * Executes calls to discovered REST/GraphQL endpoints.
+ * 
+ * <p>
+ * Enforces rate limiting per tool and client IP address.
  */
 public class McpToolExecutor {
 
@@ -32,18 +34,19 @@ public class McpToolExecutor {
     private final RestTemplate restTemplate;
     private final String baseUrl;
     private final Map<String, ToolExecutionMetadata> executionMetadata;
-    private final Map<String, McpTool> customTools;
+    private final RateLimitService rateLimitService;
 
     public McpToolExecutor(
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
-            String baseUrl) {
+            String baseUrl,
+            RateLimitService rateLimitService) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
         this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl;
         this.executionMetadata = new ConcurrentHashMap<>();
-        this.customTools = new ConcurrentHashMap<>();
+        this.rateLimitService = rateLimitService;
     }
 
     /**
@@ -55,28 +58,31 @@ public class McpToolExecutor {
     }
 
     /**
-     * Register a custom McpTool for direct Java execution.
-     */
-    public void registerCustomTool(String toolName, McpTool tool) {
-        customTools.put(toolName, tool);
-        log.debug("Registered custom tool for direct execution: {}", toolName);
-    }
-
-    /**
-     * Execute a tool call with the given arguments.
-     * Checks for custom tools first, then falls back to HTTP execution.
+     * Execute a tool call with the given arguments via HTTP request.
+     * Enforces rate limiting per tool and client IP.
      */
     public McpProtocol.CallToolResult executeTool(String toolName, Map<String, Object> arguments) {
         try {
             log.info("Executing tool: {} with arguments: {}", toolName, arguments);
 
-            // Check for custom tool first
-            McpTool customTool = customTools.get(toolName);
-            if (customTool != null) {
-                return executeCustomTool(customTool, arguments);
+            // Get client IP for rate limiting
+            String clientIP = getClientIP();
+
+            // Check rate limit
+            if (!rateLimitService.allowRequest(toolName, clientIP)) {
+                RateLimitService.RateLimitStatus status = rateLimitService.getStatus(toolName, clientIP);
+                String errorMessage = String.format(
+                        "Rate limit exceeded for tool '%s'. Limit: %d requests per %s. Please try again later.",
+                        toolName,
+                        status.maxRequests(),
+                        formatDuration(status.window()));
+                log.warn("Rate limit exceeded for tool '{}' from IP '{}'", toolName, clientIP);
+                return new McpProtocol.CallToolResult(
+                        List.of(McpProtocol.Content.text(errorMessage)),
+                        true);
             }
 
-            // Fall back to HTTP execution
+            // Execute HTTP request to the tool endpoint
             ToolExecutionMetadata metadata = executionMetadata.get(toolName);
             if (metadata == null) {
                 log.warn("No execution metadata found for tool: {}", toolName);
@@ -101,31 +107,52 @@ public class McpToolExecutor {
     }
 
     /**
-     * Execute a custom McpTool using direct Java invocation.
+     * Get client IP address from current HTTP request.
+     * Checks common proxy headers first, falls back to remote address.
      */
-    private McpProtocol.CallToolResult executeCustomTool(McpTool tool, Map<String, Object> arguments) {
-        log.debug("Executing custom tool: {}", tool.getName());
-
+    private String getClientIP() {
         try {
-            ToolResult result = tool.execute(arguments);
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder
+                    .getRequestAttributes();
+            if (attributes != null) {
+                HttpServletRequest request = attributes.getRequest();
 
-            // Convert ToolResult to McpProtocol.CallToolResult
-            List<McpProtocol.Content> content = new ArrayList<>();
-
-            for (ToolResult.ToolContent toolContent : result.content()) {
-                switch (toolContent.type()) {
-                    case TEXT -> content.add(McpProtocol.Content.text(toolContent.text()));
-                    case DATA -> content.add(McpProtocol.Content.data(toolContent.data()));
+                // Check proxy headers
+                String ip = request.getHeader("X-Forwarded-For");
+                if (ip != null && !ip.isEmpty()) {
+                    // X-Forwarded-For can contain multiple IPs, take the first one
+                    return ip.split(",")[0].trim();
                 }
+
+                ip = request.getHeader("X-Real-IP");
+                if (ip != null && !ip.isEmpty()) {
+                    return ip;
+                }
+
+                // Fall back to remote address
+                return request.getRemoteAddr();
             }
-
-            return new McpProtocol.CallToolResult(content, result.isError());
-
         } catch (Exception e) {
-            log.error("Custom tool execution failed: {}", tool.getName(), e);
-            return new McpProtocol.CallToolResult(
-                    List.of(McpProtocol.Content.text("Tool execution error: " + e.getMessage())),
-                    true);
+            log.debug("Could not determine client IP, using 'unknown'", e);
+        }
+
+        return "unknown";
+    }
+
+    /**
+     * Format duration for human-readable error messages.
+     */
+    private String formatDuration(java.time.Duration duration) {
+        long hours = duration.toHours();
+        long minutes = duration.toMinutes();
+        long seconds = duration.getSeconds();
+
+        if (hours > 0) {
+            return hours + " hour" + (hours > 1 ? "s" : "");
+        } else if (minutes > 0) {
+            return minutes + " minute" + (minutes > 1 ? "s" : "");
+        } else {
+            return seconds + " second" + (seconds > 1 ? "s" : "");
         }
     }
 

@@ -287,62 +287,18 @@ curl -X POST http://localhost:8080/mcp/admin/tools/reload
 ┌─────────────────┐      ┌──────────────┐
 │ Determine Mode  │─────▶│ CONFIG_BASED │──▶ ✅ PRODUCTION (approved-tools.yml)
 └────────┬────────┘      └──────────────┘
-      Creating Custom Tools
-
-### Tool Interface
-
-```java
-public interface McpTool {
-    String getName();           // Unique tool identifier
-    String getDescription();    // Human-readable description
-    JsonNode getInputSchema();  // JSON Schema for parameters
-    ToolResult execute(Map<String, Object> arguments);  // Tool logic
-}
+         │
+         ▼
+┌─────────────────┐
+│ Check Approval  │
+│ (YAML config)   │
+└────────┬────────┘
+         │
+         ▼
+      ✅ / ❌
 ```
 
-### File Operations Example
-
-```java
-@Component
-public class ReadFileTool implements McpTool {
-    
-    @Override
-    public String getName() {
-        return "read_file";
-    }
-    
-    @Override
-    public String getDescription() {
-        return "Read contents of a file";
-    }
-    
-    @Override
-    public JsonNode getInputSchema() {
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode schema = mapper.createObjectNode();
-        schema.put("type", "object");
-        
-        ObjectNode properties = mapper.createObjectNode();
-        ObjectNode path = mapper.createObjectNode();
-        path.put("type", "string");
-        path.put("description", "File path to read");
-        properties.set("path", path);
-        
-        schema.set("properties", properties);
-        schema.set("required", mapper.createArrayNode().add("path"));
-        
-        return schema;
-    }
-    
-    @Override
-    public ToolResult execute(Map<String, Object> arguments) {
-        try {
-            String path = (String) arguments.get("path");
-            String content = Files.readString(Path.of(path));
-            return ToolResult.success(content);
-        } catch (IOException e) {
-            return ToolResult.error("Failed to read file: " + e.getMessage());
-    Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -494,6 +450,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 ```
 
 No additional dependencies required.
+
 **Application.java:**
 ```java
 @SpringBootApplication
@@ -504,43 +461,18 @@ public class McpServerApplication {
 }
 ```
 
-**EchoTool.java:**
+**UserController.java:**
 ```java
-@Component
-public class EchoTool implements McpTool {
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
     
-    @Override
-    public String getName() {
-        return "echo";
-    }
-    
-    @Override
-    public String getDescription() {
-        return "Echoes back the input message";
-    }
-    
-    @Override
-    public JsonNode getInputSchema() {
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode schema = mapper.createObjectNode();
-        schema.put("type", "object");
-        
-        ObjectNode properties = mapper.createObjectNode();
-        ObjectNode message = mapper.createObjectNode();
-        message.put("type", "string");
-        message.put("description", "Message to echo");
-        properties.set("message", message);
-        
-        schema.set("properties", properties);
-        schema.set("required", mapper.createArrayNode().add("message"));
-        
-        return schema;
-    }
-    
-    @Override
-    public ToolResult execute(Map<String, Object> arguments) {
-        String message = (String) arguments.get("message");
-        return ToolResult.success("Echo: " + message);
+    @GetMapping
+    public List<User> getAllUsers() {
+        return List.of(
+            new User(1L, "Alice"),
+            new User(2L, "Bob")
+        );
     }
 }
 ```
@@ -548,7 +480,7 @@ public class EchoTool implements McpTool {
 **approved-tools.yml:**
 ```yaml
 approvedTools:
-  - echo
+  - get_all_users
 ```
 
 Run the application and connect AI agents to `http://localhost:8080/mcp/sse`
@@ -585,14 +517,25 @@ For issues, questions, or contributions:
 
 ## 🗺️ Roadmap
 
-- [ ] Tool execution implementation
+See [TODO.md](TODO.md) for the complete execution plan and roadmap.
+
+**Current Focus (v1.0.0):**
+- ✅ REST/GraphQL endpoint auto-discovery
+- ✅ HTTP-based tool execution
+- ✅ YAML-based security approval
+- ✅ SSE transport
+- ✅ Admin UI
+
+**High Priority (v1.1.0+):**
+- [ ] Enhanced security features (rate limiting, timeouts, audit logging)
 - [ ] WebSocket transport support
-- [ ] Resource and Prompt support
-- [ ] Enhanced security features
-- [ ] Performance optimizations
 - [ ] Metrics and monitoring
-- [ ] Sample applications
-- [ ] Extended documentation
+- [ ] Performance optimizations
+
+**Future Considerations:**
+- [ ] MCP Resources and Prompts support
+- [ ] Multi-tenant support
+- [ ] Extended documentation and examples
 
 ---
 

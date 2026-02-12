@@ -2,15 +2,47 @@
 # Use with: auto-mcp-server.tools.approval-config-file=classpath:approved-tools.yml
 
 approvedTools:
-  # Public API endpoints that are safe to expose
-  - get_api_users
-  - get_api_products
+  # Simple approval (uses default rate limit: 100 requests/hour)
   - get_api_public_info
 
-  # Search and query operations
-  - post_api_search
-  - get_api_search_query
+  # With custom rate limit
+  - name: get_api_users
+    rateLimit:
+      requests: 100
+      window: PT1H # 1 hour (ISO-8601 duration)
 
-  # Read-only operations
+  - name: post_api_search
+    rateLimit:
+      requests: 50
+      window: PT1H # 50 requests per hour
+
+  # Stricter limits for write operations
+  - name: post_api_users
+    rateLimit:
+      requests: 10
+      window: PT1H # Only 10 creates per hour
+
+  - name: delete_api_users_id
+    rateLimit:
+      requests: 5
+      window: PT1H # Very limited delete operations
+
+  # Per-minute rate limit for high-frequency operations
+  - name: get_api_health
+    rateLimit:
+      requests: 60
+      window: PT1M # 60 requests per minute
+
+  # Simple string format (backward compatible)
+  - get_api_products
   - get_api_orders
-  - get_api_customers_id
+# Configuration notes:
+# - Tools can be specified as simple strings (use default rate limit)
+# - Or as objects with 'name' and 'rateLimit' properties
+# - window uses ISO-8601 duration format:
+#   - PT1H  = 1 hour
+#   - PT1M  = 1 minute
+#   - PT30S = 30 seconds
+#   - PT15M = 15 minutes
+#   - P1D   = 1 day
+# - Rate limits are enforced per client IP address

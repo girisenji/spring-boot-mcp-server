@@ -3,14 +3,14 @@ package io.github.girisenji.ai.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.girisenji.ai.controller.McpController;
 import io.github.girisenji.ai.controller.ToolManagementController;
-import io.github.girisenji.ai.discovery.CustomToolDiscoveryService;
 import io.github.girisenji.ai.discovery.EndpointDiscoveryService;
 import io.github.girisenji.ai.discovery.GraphQLDiscoveryService;
 import io.github.girisenji.ai.discovery.OpenApiDiscoveryService;
 import io.github.girisenji.ai.discovery.RestEndpointDiscoveryService;
 import io.github.girisenji.ai.service.McpToolExecutor;
 import io.github.girisenji.ai.service.McpToolRegistry;
-import io.github.girisenji.ai.service.ToolApprovalService;
+import io.github.girisenji.ai.service.RateLimitService;
+import io.github.girisenji.ai.service.ToolConfigurationService;
 import io.github.girisenji.ai.util.JsonSchemaGenerator;
 import graphql.schema.GraphQLSchema;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -98,31 +98,28 @@ public class AutoMcpServerAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnProperty(prefix = "auto-mcp-server.discovery", name = "custom-tools-enabled", havingValue = "true", matchIfMissing = true)
-    public CustomToolDiscoveryService customToolDiscoveryService(
-            ApplicationContext applicationContext,
-            McpToolExecutor toolExecutor,
-            AutoMcpServerProperties properties) {
-
-        log.info("Configuring custom tool discovery service");
-        return new CustomToolDiscoveryService(applicationContext, toolExecutor, properties);
+    public RateLimitService rateLimitService(AutoMcpServerProperties properties) {
+        int defaultRequestsPerHour = properties.rateLimiting().defaultRequestsPerHour();
+        log.info("Configuring rate limit service with default limit: {} requests/hour", defaultRequestsPerHour);
+        return new RateLimitService(defaultRequestsPerHour);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public ToolApprovalService toolApprovalService(
+    public ToolConfigurationService toolConfigurationService(
             AutoMcpServerProperties properties,
-            ResourceLoader resourceLoader) {
+            ResourceLoader resourceLoader,
+            RateLimitService rateLimitService) {
 
-        log.info("Configuring tool approval service (config-driven mode)");
-        return new ToolApprovalService(properties, resourceLoader);
+        log.info("Configuring tool configuration service");
+        return new ToolConfigurationService(properties, resourceLoader, rateLimitService);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public McpToolRegistry mcpToolRegistry(
             List<EndpointDiscoveryService> discoveryServices,
-            ToolApprovalService approvalService,
+            ToolConfigurationService toolConfigService,
             AutoMcpServerProperties properties) {
         // Filter out null services
         List<EndpointDiscoveryService> validServices = new ArrayList<>();
@@ -133,7 +130,7 @@ public class AutoMcpServerAutoConfiguration {
         }
 
         log.info("Configuring MCP tool registry with {} discovery services", validServices.size());
-        return new McpToolRegistry(validServices, approvalService, properties);
+        return new McpToolRegistry(validServices, toolConfigService, properties);
     }
 
     @Bean
@@ -141,21 +138,22 @@ public class AutoMcpServerAutoConfiguration {
     public McpToolExecutor mcpToolExecutor(
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
-            AutoMcpServerProperties properties) {
+            AutoMcpServerProperties properties,
+            RateLimitService rateLimitService) {
 
         String baseUrl = properties.baseUrl();
         log.info("Configuring MCP tool executor with base URL: {}", baseUrl);
-        return new McpToolExecutor(applicationContext, objectMapper, baseUrl);
+        return new McpToolExecutor(applicationContext, objectMapper, baseUrl, rateLimitService);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public ToolManagementController toolManagementController(
             McpToolRegistry toolRegistry,
-            ToolApprovalService approvalService) {
+            ToolConfigurationService toolConfigService) {
 
         log.info("Configuring tool management controller");
-        return new ToolManagementController(toolRegistry, approvalService);
+        return new ToolManagementController(toolRegistry, toolConfigService);
     }
 
     /**

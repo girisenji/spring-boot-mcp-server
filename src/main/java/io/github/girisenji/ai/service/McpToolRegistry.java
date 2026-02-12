@@ -20,7 +20,7 @@ public class McpToolRegistry {
     private static final Logger log = LoggerFactory.getLogger(McpToolRegistry.class);
 
     private final List<EndpointDiscoveryService> discoveryServices;
-    private final ToolApprovalService approvalService;
+    private final ToolConfigurationService toolConfigService;
     private final AutoMcpServerProperties properties;
     private final Map<String, McpProtocol.Tool> discoveredTools;
     private final Object initLock = new Object();
@@ -28,10 +28,10 @@ public class McpToolRegistry {
 
     public McpToolRegistry(
             List<EndpointDiscoveryService> discoveryServices,
-            ToolApprovalService approvalService,
+            ToolConfigurationService toolConfigService,
             AutoMcpServerProperties properties) {
         this.discoveryServices = discoveryServices != null ? discoveryServices : Collections.emptyList();
-        this.approvalService = approvalService;
+        this.toolConfigService = toolConfigService;
         this.properties = properties;
         this.discoveredTools = new ConcurrentHashMap<>();
         log.info("MCP tool registry created with {} discovery services", this.discoveryServices.size());
@@ -72,7 +72,7 @@ public class McpToolRegistry {
 
         // Log approval summary
         long approvedCount = discoveredTools.keySet().stream()
-                .filter(approvalService::isToolApproved)
+                .filter(toolConfigService::isToolApproved)
                 .count();
         log.info("Total discovered: {}, Approved: {}", discoveredTools.size(), approvedCount);
     }
@@ -126,7 +126,7 @@ public class McpToolRegistry {
         if (!initialized) {
             initialize();
         }
-        if (approvalService.isToolApproved(name)) {
+        if (toolConfigService.isToolApproved(name)) {
             return Optional.ofNullable(discoveredTools.get(name));
         }
         return Optional.empty();
@@ -139,7 +139,7 @@ public class McpToolRegistry {
         if (!initialized) {
             initialize();
         }
-        return approvalService.getApprovedCount();
+        return toolConfigService.getApprovedCount();
     }
 
     /**
@@ -159,7 +159,7 @@ public class McpToolRegistry {
         if (!initialized) {
             initialize();
         }
-        return discoveredTools.containsKey(name) && approvalService.isToolApproved(name);
+        return discoveredTools.containsKey(name) && toolConfigService.isToolApproved(name);
     }
 
     /**
@@ -178,7 +178,7 @@ public class McpToolRegistry {
 
     private List<McpProtocol.Tool> getApprovedToolsList() {
         return discoveredTools.entrySet().stream()
-                .filter(entry -> approvalService.isToolApproved(entry.getKey()))
+                .filter(entry -> toolConfigService.isToolApproved(entry.getKey()))
                 .map(Map.Entry::getValue)
                 .collect(Collectors.toList());
     }

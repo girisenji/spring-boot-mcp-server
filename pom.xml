@@ -50,6 +50,7 @@
         <spring-graphql.version>1.2.4</spring-graphql.version>
         <jackson.version>2.16.1</jackson.version>
         <json-schema-generator.version>4.33.1</json-schema-generator.version>
+        <caffeine.version>3.1.8</caffeine.version>
         
         <!-- Testing -->
         <junit.version>5.10.1</junit.version>
@@ -128,6 +129,13 @@
             <groupId>com.github.victools</groupId>
             <artifactId>jsonschema-generator</artifactId>
             <version>${json-schema-generator.version}</version>
+        </dependency>
+
+        <!-- Caffeine Cache (for rate limiting) -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
         </dependency>
 
         <!-- Logging -->

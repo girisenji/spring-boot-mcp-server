@@ -3,6 +3,8 @@ package io.github.girisenji.ai.service;
 import io.github.girisenji.ai.config.AutoMcpServerProperties;
 import io.github.girisenji.ai.discovery.EndpointDiscoveryService;
 import io.github.girisenji.ai.mcp.McpProtocol;
+import io.github.girisenji.ai.model.RateLimitConfig;
+import io.github.girisenji.ai.service.ToolConfigurationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,10 +13,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -24,42 +26,37 @@ class McpToolRegistryTest {
     @Mock
     private EndpointDiscoveryService discoveryService;
 
-    @Mock
-    private ToolApprovalService approvalService;
-
-    @Mock
-    private AutoMcpServerProperties properties;
-
-    @Mock
-    private AutoMcpServerProperties.Tools toolsConfig;
-
     private McpToolRegistry toolRegistry;
     private Set<String> approvedToolNames;
+    private TestToolConfigurationService toolConfigService;
+    private AutoMcpServerProperties properties;
 
     @BeforeEach
     void setUp() {
         approvedToolNames = new HashSet<>();
+        toolConfigService = new TestToolConfigurationService(approvedToolNames);
 
-        // Mock properties
-        lenient().when(properties.tools()).thenReturn(toolsConfig);
-        lenient().when(toolsConfig.duplicateToolStrategy())
-                .thenReturn(AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS);
+        // Create real record instances instead of mocks (records can't be mocked in JDK
+        // 21)
+        AutoMcpServerProperties.Tools toolsConfig = new AutoMcpServerProperties.Tools(
+                new String[] { "/**" },
+                new String[] { "/actuator/**", "/error" },
+                100,
+                true,
+                "classpath:approved-tools.yml",
+                AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS,
+                false);
 
-        // Mock isToolApproved to check our tracking set
-        lenient().when(approvalService.isToolApproved(anyString())).thenAnswer(invocation -> {
-            String toolName = invocation.getArgument(0);
-            return approvedToolNames.contains(toolName);
-        });
+        properties = new AutoMcpServerProperties(
+                true,
+                "/mcp",
+                "http://localhost:8080",
+                new AutoMcpServerProperties.Discovery(),
+                toolsConfig,
+                new AutoMcpServerProperties.Performance(),
+                new AutoMcpServerProperties.RateLimiting());
 
-        // Mock getApprovedToolNames to return our tracking set
-        lenient().when(approvalService.getApprovedToolNames())
-                .thenAnswer(invocation -> java.util.Collections.unmodifiableSet(approvedToolNames));
-
-        // Mock getApprovedCount
-        lenient().when(approvalService.getApprovedCount())
-                .thenAnswer(invocation -> approvedToolNames.size());
-
-        toolRegistry = new McpToolRegistry(List.of(discoveryService), approvalService, properties);
+        toolRegistry = new McpToolRegistry(List.of(discoveryService), toolConfigService, properties);
     }
 
     @Test
@@ -189,5 +186,73 @@ class McpToolRegistryTest {
         // Then
         assertThat(toolRegistry.getToolCount()).isZero();
         assertThat(toolRegistry.getAllTools()).isEmpty();
+    }
+
+    /**
+     * Test stub for ToolConfigurationService that avoids Mockito issues with JDK
+     * 21.
+     */
+    private static class TestToolConfigurationService extends ToolConfigurationService {
+        private final Set<String> approvedToolNames;
+
+        public TestToolConfigurationService(Set<String> approvedToolNames) {
+            super(createMockProperties(), createMockResourceLoader(), createMockRateLimitService());
+            this.approvedToolNames = approvedToolNames;
+        }
+
+        private static AutoMcpServerProperties createMockProperties() {
+            // Create real record instances - records can't be mocked easily in JDK 21
+            AutoMcpServerProperties.Tools tools = new AutoMcpServerProperties.Tools(
+                    new String[] { "/**" }, // includePatterns
+                    new String[] { "/actuator/**", "/error" }, // excludePatterns
+                    100, // maxToolNameLength
+                    true, // useOperationIdAsToolName
+                    null, // approvalConfigFile - null to skip file loading
+                    AutoMcpServerProperties.Tools.DuplicateToolStrategy.FIRST_WINS,
+                    false // logExcludedTools
+            );
+
+            AutoMcpServerProperties.Discovery discovery = new AutoMcpServerProperties.Discovery();
+            AutoMcpServerProperties.Performance performance = new AutoMcpServerProperties.Performance();
+            AutoMcpServerProperties.RateLimiting rateLimiting = new AutoMcpServerProperties.RateLimiting();
+
+            return new AutoMcpServerProperties(
+                    true, // enabled
+                    "/mcp", // endpoint
+                    "http://localhost:8080", // baseUrl
+                    discovery,
+                    tools,
+                    performance,
+                    rateLimiting);
+        }
+
+        private static org.springframework.core.io.ResourceLoader createMockResourceLoader() {
+            return mock(org.springframework.core.io.ResourceLoader.class);
+        }
+
+        private static RateLimitService createMockRateLimitService() {
+            // Create a real instance instead of mocking to avoid JDK 21 Mockito issues
+            return new RateLimitService(100);
+        }
+
+        @Override
+        public boolean isToolApproved(String toolName) {
+            return approvedToolNames.contains(toolName);
+        }
+
+        @Override
+        public Set<String> getApprovedToolNames() {
+            return java.util.Collections.unmodifiableSet(approvedToolNames);
+        }
+
+        @Override
+        public int getApprovedCount() {
+            return approvedToolNames.size();
+        }
+
+        @Override
+        public Optional<RateLimitConfig> getRateLimitConfig(String toolName) {
+            return Optional.empty();
+        }
     }
 }
